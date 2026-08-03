@@ -1,0 +1,10 @@
+{
+  "extends": "@lcai/typescript-config/react-library.json",
+  "compilerOptions": {
+    "paths": {
+      "@lcai/ui/*": ["./src/*"]
+    }
+  },
+  "include": ["."],
+  "exclude": ["node_modules", "dist"]
+}

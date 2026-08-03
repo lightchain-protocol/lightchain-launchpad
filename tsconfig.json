@@ -1,0 +1,3 @@
+{
+  "extends": "@lcai/typescript-config/base.json"
+}

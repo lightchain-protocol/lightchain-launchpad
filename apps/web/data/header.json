@@ -1,0 +1,36 @@
+{
+  "nav": [
+    {
+      "link": "/",
+      "isIcon": false,
+      "isMenu": false,
+      "text": "Home"
+    },
+    {
+      "link": "/ranking",
+      "text": "Ranking",
+      "isIcon": false,
+      "isMenu": false,
+      "dropdown": false
+    },
+    {
+      "link": "/create-token",
+      "text": "Create Token",
+      "isIcon": false,
+      "isMenu": false,
+      "megamenu": false
+    },
+    {
+      "link": "#",
+      "isIcon": false,
+      "isMenu": false,
+      "text": "Progess"
+    },
+    {
+      "link": "#",
+      "isIcon": false,
+      "isMenu": false,
+      "text": "FAQs"
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+services:
+  indexer:
+    build:
+      context: .
+      dockerfile: apps/indexer/Dockerfile
+    container_name: lcai-launchpad-indexer
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/lcai_launchpad}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      RPC_URL: ${RPC_URL:-https://host.docker.internal:8545}
+      CHAIN_ID: ${CHAIN_ID:-31337}
+      LAUNCHPAD_ADDRESS: ${LAUNCHPAD_ADDRESS:-0x0000000000000000000000000000000000000000}
+      START_BLOCK: ${START_BLOCK:-0}
+      FINALITY_BLOCK_COUNT: ${FINALITY_BLOCK_COUNT:-0}
+      PONDER_PORT: "42069"
+      STATUS_BROADCAST_MS: ${STATUS_BROADCAST_MS:-5000}
+    ports:
+      - "42069:42069"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: lcai-launchpad-api
+    restart: unless-stopped
+    depends_on:
+      indexer:
+        condition: service_started
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/lcai_launchpad}
+      PORT: "3001"
+      HOST: 0.0.0.0
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3001}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: production
+      RPC_URL: ${RPC_URL:-http://host.docker.internal:8545}
+      LAUNCHPAD_ADDRESS: ${LAUNCHPAD_ADDRESS:-0x0000000000000000000000000000000000000000}
+      PINATA_JWT: ${PINATA_JWT:-}
+      PINATA_GATEWAY: ${PINATA_GATEWAY:-gateway.pinata.cloud}
+      IPFS_GATEWAYS: ${IPFS_GATEWAYS:-https://gateway.pinata.cloud/ipfs/,https://ipfs.io/ipfs/,https://cloudflare-ipfs.com/ipfs/}
+      MAX_IMAGE_BYTES: ${MAX_IMAGE_BYTES:-4194304}
+      RATE_LIMIT_GLOBAL_PER_MIN: ${RATE_LIMIT_GLOBAL_PER_MIN:-300}
+      RATE_LIMIT_UPLOAD_PER_MIN: ${RATE_LIMIT_UPLOAD_PER_MIN:-10}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # web:
+  #   build:
+  #     context: .
+  #     dockerfile: apps/web/Dockerfile
+  #     args:
+  #       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/v1}
+  #       NEXT_PUBLIC_WEBSCOKET_URL: ${NEXT_PUBLIC_WEBSCOKET_URL:-http://localhost:3001}
+  #   container_name: lcai-launchpad-web
+  #   restart: unless-stopped
+  #   depends_on:
+  #     api:
+  #       condition: service_healthy
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     PORT: "3000"
+  #     HOSTNAME: 0.0.0.0
+  #   healthcheck:
+  #     test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 15s

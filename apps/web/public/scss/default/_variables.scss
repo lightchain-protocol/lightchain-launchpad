@@ -1,0 +1,159 @@
+:root {
+  // Theme Color
+  --clr-primary: #7064e9;
+  --clr-primary-alt: #35316f;
+  --clr-secondary: #410093;
+  --clr-tertiary: #f2cd25;
+
+  // ======= New Added Color START
+  --clr-dark-100: #060609;
+  --clr-dark-200: #1f293b;
+  --clr-dark-300: #374256;
+  --clr-dark-400: #7476aa;
+  --clr-dark-500: #1a1b38;
+  --clr-gray-100: #eef1f9;
+  --clr-gray-200: #f5f8fa;
+  // ======= New Added Color END
+
+  --bs-primary: var(--clr-primary);
+  --bs-primary-rgb: 112, 100, 233;
+
+  --clr-darker-two: #14152c;
+  // Gredient Color
+  --clr-primary-gradient-start: #4179fe;
+  --clr-primary-gradient-end: #36f5ff;
+
+  --clr-secondary-gradient-start: #dd00ac;
+  --clr-secondary-gradient-end: #147ef3;
+
+  --clr-tertiary-gradient-start: #fd6221;
+  --clr-tertiary-gradient-end: #f2cd25;
+
+  // Dark Color
+  --clr-primary-darker: #011827;
+  --clr-tertiary-darker: #150b40;
+  --clr-secondary-darker: #190301;
+  --clr-bg-1: #0e0c15;
+  --clr-link: #bcc3d7;
+  --clr-border-dark: #1e1e1e;
+
+  // Typo Color
+  --clr-heading: #ccceef;
+  --clr-body: #7376aa;
+  --clr-text-off: #565e78;
+
+  --clr-dark: #070710;
+  --clr-darker: rgba(6, 6, 6, 0.7);
+  --clr-darkest: rgba(0, 0, 0, 0.3);
+
+  --clr-black: #000000;
+  --clr-black-off: rgba(0, 0, 0, 0.2);
+  --clr-blacker: rgba(15, 15, 17, 0);
+  --clr-blackest: #0f1021;
+  --clr-border: hsla(0, 0%, 100%, 0.1);
+  --clr-border-light: #e5e7eb;
+
+  --clr-lessdark: #1e1e1e;
+
+  // Gery Colors
+  --clr-gray: #7376aa;
+  --clr-midgray: #878787;
+  --clr-light: #e4e6ea;
+  --clr-lighter: #ced0d4;
+  --clr-lightest: #f0f2f5;
+
+  --clr-white: #ffffff;
+  --clr-white-off: rgba(255, 255, 255, 0.05);
+
+  // Notify Colors
+  --clr-success: #3eb75e;
+  --clr-danger: #ff0003;
+  --clr-warning: #ff8f3c;
+  --clr-info: #1ba2db;
+
+  //Social icon colors
+  --clr-facebook: #3b5997;
+  --clr-twitter: #1ba1f2;
+  --clr-youtube: #ed4141;
+  --clr-linkedin: #0077b5;
+  --clr-pinterest: #e60022;
+  --clr-instagram: #c231a1;
+  --clr-vimeo: #00adef;
+  --clr-twitch: #6441a3;
+  --clr-discord: #7289da;
+
+  // Extra Color
+  --clr-extra01: #666666;
+  --clr-extra02: #606770;
+  --clr-extra03: #fbfbfd;
+  --clr-extra04: #1a1a1a;
+  --clr-extra05: #242424;
+  --clr-extra06: #111424;
+  --clr-extra07: #0f172a;
+
+  //Border-radius
+  --border-width: 2px;
+  --radius-small: 6px;
+  --radius: 10px;
+  --radius-big: 16px;
+  --radius-bigger: 50px;
+
+  //Font weight
+  //primary font
+  --p-light: 300;
+  --p-regular: 400;
+  --p-medium: 500;
+  --p-semi-bold: 600;
+  --p-bold: 700;
+  --p-extra-bold: 800;
+  --p-black: 900;
+
+  //Shadows
+  --shadow-primary: 0 0 20px 5px rgba(20, 126, 243, 0.1);
+  --shadow-light: 1px 1px 6px rgba(0, 0, 0, 0.25);
+  --shadow-lighter: 4px 4px 20px 20px rgba(0, 0, 0, 0.01);
+  --shadow-input: 0 0 10px rgba(56, 189, 248, 0.7);
+
+  //transition easing
+  --transition: 0.3s;
+  --transition-transform: transform 0.65s cubic-bezier(0.23, 1, 0.32, 1);
+
+  //Font Family
+  --font-primary: "Inter", sans-serif;
+  --secondary-font: "Inter", sans-serif;
+
+  //Fonts Size
+  --font-size-b1: 18px;
+  --font-size-b2: 16px;
+  --font-size-b3: 14px;
+  --font-size-b4: 12px;
+
+  //Line Height
+  --line-height-b1: 1.67; //28px
+  --line-height-b2: 1.7; //24px
+  --line-height-b3: 1.6; //22px
+  --line-height-b4: 1.3; //16px
+
+  // Heading Font
+  --h1: 56px; //52px 1.29
+  --h2: 44px; //44px 1.23
+  --h3: 36px; // 34px 1.14
+  --h4: 24px; //30px  1.25
+  --h5: 18px; //22px 1.24
+  --h6: 16px; //20px 1.25
+}
+
+$sm-screen: "only screen and (min-width: 320px)";
+$esm-screen: "only screen and (min-width: 576px)";
+$md-screen: "only screen and (min-width: 768px)";
+$lg-screen: "only screen and (min-width: 992px)";
+$xl-screen: "only screen and (min-width: 1200px)";
+$xxl-screen: "only screen and (min-width: 1400px)";
+$smlg-device: "only screen and (max-width: 1199px)";
+$extra-device: "only screen and (min-width: 1600px) and (max-width: 1919px)";
+$laptop-device: "only screen and (min-width: 1200px) and (max-width: 1599px)";
+$lg-layout: "only screen and (min-width: 992px) and (max-width: 1199px)";
+$md-layout: "only screen and (min-width: 768px) and (max-width: 991px)";
+$sm-layout: "only screen and (max-width: 767px)";
+$large-mobile: "only screen and (max-width: 575px)";
+$small-mobile: "only screen and (max-width: 479px)";

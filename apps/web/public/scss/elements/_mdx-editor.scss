@@ -1,0 +1,123 @@
+// popover for text link style override
+[data-radix-popper-content-wrapper] {
+  backdrop-filter: blur(24px);
+  border-radius: 10px;
+
+  form {
+  padding: 10px !important;
+    label {
+      color: var(--content-primary) !important;
+    }
+    input {
+      background: var(--surface-x-soft) !important;
+      border: 1px solid var(--border) !important;
+    }
+
+    button {
+        margin-top: 6px;
+
+      &[type="submit"] {
+        background: var(--surface-primary);
+        border: 0;
+        color: var(--color-white);
+        font-weight: 600;
+        cursor: pointer;
+        padding: 6px 20px;
+        font-size: 16px;
+      }
+      &[type="reset"] {
+        background: var(--surface-x-soft);
+        border: 1px solid var(--border);
+        color: var(--content-primary);
+        font-weight: 600;
+        cursor: pointer;
+        padding: 6px 20px;
+        font-size: 16px;
+      }
+    }
+  }
+}
+
+// dialog for image upload style override
+.mdxeditor-popup-container {
+    z-index: 99 !important;
+  > div:nth-of-type(1)[data-state="open"] {
+    background-color: rgba(7, 7, 16, 0.8) !important;
+    opacity: 100 !important;
+  }
+
+  > div:nth-of-type(2)[data-state="open"] {
+    background-color: var(--surface-base-dark);
+    flex-direction: column !important;
+    gap: 15px;
+    backdrop-filter: blur(54px) !important;
+    padding: 30px !important;
+    min-width: 430px;
+
+    @media screen and (max-width: 460px) {
+        min-width: calc(100% - 40px);
+        width: calc(100% - 40px);
+    }
+
+    h2 {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--content-primary);
+    }
+
+    form {
+      gap: 12px;
+      flex: 0 0 auto;
+      padding: 0;
+      width: 100%;
+
+      label {
+        font-size: 14px;
+        color: var(--content-primary) !important;
+      }
+      input {
+        background: var(--surface-x-soft) !important;
+        border: 1px solid var(--border) !important;
+      }
+
+      button {
+        margin-top: 8px;
+
+        &[type="submit"] {
+          background: var(--surface-primary);
+          border: 0;
+          color: var(--color-white);
+          font-weight: 600;
+          cursor: pointer;
+          padding: 6px 30px;
+          font-size: 16px;
+        }
+        &[type="reset"] {
+          background: var(--surface-x-soft);
+          border: 1px solid var(--border);
+          color: var(--content-primary);
+          font-weight: 600;
+          cursor: pointer;
+          padding: 6px 20px;
+          font-size: 16px;
+        }
+      }
+    }
+  }
+}
+
+
+
+// mdxeditor 
+.mdxeditor {
+    background-color: var(--surface-x-soft);
+
+    .mdxeditor-toolbar {
+        border-bottom-right-radius: 0;
+        border-bottom-left-radius: 0;
+    }
+
+    .prose {
+        font-size: 15px;
+    }
+}

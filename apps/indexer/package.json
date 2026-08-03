@@ -1,0 +1,33 @@
+{
+  "name": "@lcai/indexer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./schema": {
+      "types": "./ponder.schema.ts",
+      "default": "./ponder.schema.ts"
+    }
+  },
+  "scripts": {
+    "predev": "pnpm --filter @lcai/abis build",
+    "dev": "ponder dev",
+    "start": "ponder start",
+    "codegen": "ponder codegen",
+    "typecheck": "ponder codegen && tsc -p tsconfig.json",
+    "build": "echo 'ponder app — no build step' && exit 0",
+    "test": "echo 'no tests yet' && exit 0",
+    "lint": "echo 'no lint' && exit 0"
+  },
+  "dependencies": {
+    "@lcai/abis": "workspace:*",
+    "hono": "^4.5.0",
+    "ponder": "^0.9.0",
+    "postgres": "^3.4.5",
+    "viem": "^2.52.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.3"
+  }
+}

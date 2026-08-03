@@ -1,0 +1,34 @@
+# Dependencies & build output
+**/node_modules
+**/.next
+**/dist
+**/.ponder
+
+# Env & secrets
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Git & IDE
+.git
+.gitignore
+.cursor
+.vscode
+**/*.md
+**/.DS_Store
+**/coverage
+**/*.log
+
+# Contracts (ABIs live in packages/abis/src)
+contracts
+**/artifacts
+**/cache
+**/typechain-types
+
+# Other apps — only package.json needed for pnpm workspace install
+apps/api/**
+!apps/api/package.json
+apps/indexer/**
+!apps/indexer/package.json
+
+packages/abis/dist

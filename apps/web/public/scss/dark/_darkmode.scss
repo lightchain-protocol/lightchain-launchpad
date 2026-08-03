@@ -1,0 +1,269 @@
+@use "../default/variables" as *;
+
+html {
+    &.light {
+        background: white;
+
+        .inner-switcher {
+            background: #efefff;
+
+            img {
+                filter: invert(0) !important;
+            }
+
+            .text {
+                color: var(--clr-blackest);
+            }
+
+            .active {
+                .text {
+                    color: var(--clr-white);
+                }
+            }
+        }
+
+        .my_switcher ul {
+            background: var(--clr-gray-100) !important;
+            border: 1px solid #b0b4ba;
+        }
+
+        .moon-light {
+            filter: invert(0) !important;
+        }
+
+        .my_switcher-2 {
+            ul {
+                .text {
+                    color: var(--dark-color-link);
+                }
+            }
+        }
+
+        .my_switcher-3 {
+            ul {
+                background-color: #efefff;
+
+                li {
+                    a {
+                        &.active {
+                            &:hover {
+                                color: transparent;
+                            }
+                        }
+                    }
+                }
+
+                .text {
+                    color: var(--clr-black);
+                }
+            }
+        }
+
+        .my_switcher-2 ul li a {
+            border: 2px solid #7064e94d;
+        }
+
+        .swap {
+            &__navbar {
+                &-logolight {
+                    display: none;
+                }
+
+                &-logodark {
+                    display: block;
+                }
+
+                &-list {
+                    li {
+
+                        a {
+                            color: var(--clr-darker-two);
+
+                            &:hover {
+                                color: #ff3bd4;
+                            }
+                        }
+                    }
+                }
+
+                &-small {
+                    background-color: var(--clr-white) !important;
+
+                    &--head {
+                        border-bottom: 1px solid rgba(from var(--clr-dark-100) r g b / .1);
+                    }
+                }
+            }
+
+            &__footer {
+
+                &::after {
+                    background: linear-gradient(0deg, #FFF 0%, rgba(255, 255, 255, 0.00) 100%);
+                }
+
+                &-text {
+                    color: var(--clr-body);
+                }
+
+                &-list {
+                    li {
+                        a {
+                            color: var(--clr-body);
+
+                            &:hover {
+                                transition: all 0.2s linear;
+                                color: var(--clr-darker-two);
+                            }
+                        }
+                    }
+                }
+
+            }
+
+            &__navbar {
+                background: var(--clr-white);
+                border-bottom: 1px solid rgba(from var(--clr-dark-100) r g b / .1);
+            }
+
+            &__wrapper {
+                background: var(--clr-gray-100);
+                border: 1px solid var(--clr-gray-100);
+            }
+
+            &__form {
+                &-body {
+                    background: var(--clr-gray-200);
+
+                    &--card {
+                        background: var(--clr-gray-100);
+                    }
+                }
+
+                &-balance {
+                    &--underline {
+                        &:hover {
+                            color: rgba(from var(--clr-body) r g b / 0.8);
+                            background: none;
+                            border: 1px solid #0000;
+                        }
+                    }
+                }
+
+                &-inp {
+                    input {
+                        color: var(--clr-darker-two);
+                    }
+                }
+
+                &-active {
+                    background: #e1e4f7b0 !important;
+                }
+
+                &-head {
+                    background: var(--clr-gray-100);
+
+                    &--text {
+                        color: var(--clr-darker-two);
+                    }
+                }
+
+                &-switcher {
+                    &--btn {
+                        color: var(--clr-body);
+                        background: var(--clr-gray-100);
+                    }
+
+                    &::after {
+                        background: var(--clr-gray-200);
+                    }
+                }
+            }
+
+            &__currency {
+                &-btn {
+                    &--text {
+                        color: var(--clr-body);
+                    }
+                }
+
+                &-list {
+                    &--text {
+                        color: var(--clr-darker-two);
+                    }
+                }
+            }
+
+            &__modal {
+                &-content {
+                    background-color: var(--clr-gray-100);
+                }
+
+                &-wrap {
+                    &::-webkit-scrollbar-thumb {
+                        background: var(--clr-white);
+                    }
+
+                    .content {
+                        padding: 0 8px 0 20px;
+                    }
+                }
+
+                &-title {
+                    color: var(--clr-darker-two);
+                }
+
+                &-close {
+                    background: var(--clr-gray-200);
+                }
+
+                &-search {
+                    &--inp {
+                        color: var(--clr-darker-two);
+                        background: var(--clr-gray-200);
+
+                        &::placeholder {
+                            color: rgba(from var(--clr-heading) r g b / 1);
+                            opacity: 1;
+                        }
+
+                        &::-ms-input-placeholder {
+                            color: rgba(from var(--clr-heading) r g b / 1);
+                        }
+                    }
+                }
+
+                &-desc {
+                    color: var(--clr-darker-two);
+                }
+
+                &-star {
+                    color: var(--clr-darker-two);
+                }
+
+                &-select {
+                    &--list {
+                        background: var(--clr-gray-100);
+                        box-shadow: 1px 3px 35px 0px #d0d0d0;
+
+                        li {
+                            a {
+                                color: var(--clr-darker-two);
+                            }
+                        }
+                    }
+                }
+            }
+
+            &__hamberger {
+                &-button {
+                    background: var(--clr-gray-200);
+                    border: 1px solid #b0b4ba;
+
+                    i {
+                        color: #18191a;
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@lcai/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "build": "hardhat compile",
+    "test": "hardhat test",
+    "typecheck": "echo 'typecheck via hardhat compile' && hardhat compile --quiet",
+    "lint": "echo 'no lint' && exit 0",
+    "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "curve": "hardhat run scripts/calculateBondingCurve.ts"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox-viem": "^3.0.0",
+    "hardhat": "^2.24.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "5.2.0",
+    "@openzeppelin/contracts-upgradeable": "5.2.0",
+    "@uniswap/v2-core": "^1.0.1",
+    "@uniswap/v2-periphery": "^1.1.0-beta.0",
+    "dotenv": "^16.5.0"
+  }
+}

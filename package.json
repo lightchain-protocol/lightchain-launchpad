@@ -1,0 +1,53 @@
+{
+  "name": "lcai-launchpad",
+  "private": true,
+  "version": "0.1.0",
+  "description": "LCAI meme-token launchpad monorepo — Solidity contracts, Ponder indexer, Fastify API, Next.js frontend",
+  "license": "MIT",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "format": "turbo format",
+    "typecheck": "turbo typecheck",
+    "gen:abis": "pnpm --filter @lcai/abis gen",
+    "compile:contracts": "pnpm --filter @lcai/contracts compile",
+    "test:contracts": "pnpm --filter @lcai/contracts test",
+    "dev:indexer": "pnpm --filter @lcai/indexer dev",
+    "dev:api": "pnpm --filter @lcai/api dev",
+    "dev:frontend": "pnpm --filter @lcai/frontend dev",
+    "build:frontend": "pnpm --filter @lcai/frontend build",
+    "test": "pnpm -r test",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "@lcai/eslint-config": "workspace:*",
+    "@lcai/typescript-config": "workspace:*",
+    "prettier": "^3.8.3",
+    "prettier-plugin-tailwindcss": "^0.8.0",
+    "turbo": "^2.9.15",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.33.4",
+  "pnpm": {
+    "overrides": {
+      "kysely": "0.26.3"
+    },
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "@reown/appkit",
+      "bufferutil",
+      "esbuild",
+      "msw",
+      "sharp",
+      "utf-8-validate"
+    ]
+  }
+}

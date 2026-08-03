@@ -1,0 +1,41 @@
+!types.d.ts
+
+node_modules
+
+package-lock.json
+
+# Package managers
+pnpm-lock.yaml
+yarn.lock
+
+# Build outputs
+dist
+build
+.next
+out
+
+# Caches
+.cache
+.turbo
+.parcel-cache
+.eslintcache
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+

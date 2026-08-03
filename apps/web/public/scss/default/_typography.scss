@@ -1,0 +1,362 @@
+@use "../default/variables" as *; // Importing all the variables
+// @use "../default/extend" as *; // Importing all the extend  
+
+/**
+ * Typography
+ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+
+body {
+    font-size: 16px;
+    line-height: 1.5;
+    font-family: var(--font-primary);
+    font-style: normal;
+    color: var(--clr-body);
+    font-weight: 400;
+    scroll-behavior: auto;
+    position: relative;
+    // overflow-y: scroll;
+    scrollbar-width: thin;
+    background: var(--clr-dark-300);
+
+    @media #{$sm-screen} {
+        font-size: 16px;
+        line-height: 1.5;
+    }
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.h1,
+.h2,
+.h3,
+.h4,
+.h5,
+.h6,
+address,
+p,
+pre,
+blockquote,
+menu,
+ol,
+ul,
+table,
+hr {
+    margin: 0;
+    margin-bottom: 20px;
+
+    @media #{$sm-screen} {
+        margin-bottom: 12px;
+    }
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.h1,
+.h2,
+.h3,
+.h4,
+.h5,
+.h6 {
+    word-break: break-word;
+    font-family: var(--font-primary);
+    line-height: 1.4074;
+    color: var(--clr-heading);
+}
+
+h1,
+.h1 {
+    font-size: var(--h1);
+    line-height: 1.33;
+}
+
+h2,
+.h2 {
+    font-size: var(--h2);
+    line-height: 1.4;
+}
+
+h3,
+.h3 {
+    font-size: var(--h3);
+    line-height: 1.43;
+}
+
+h4,
+.h4 {
+    font-size: var(--h4);
+    line-height: 1.2;
+}
+
+h5,
+.h5 {
+    font-size: var(--h5);
+    line-height: 1.6;
+}
+
+h6,
+.h6 {
+    font-size: var(--h6);
+    line-height: 1.44;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.h1,
+.h2,
+.h3,
+.h4,
+.h5,
+.h6 {
+    a {
+        color: inherit;
+    }
+}
+
+@media #{$sm-screen} {
+
+    h1,
+    .h1 {
+        font-size: 52px;
+    }
+
+    h2,
+    .h2 {
+        font-size: 48px;
+    }
+
+    h3,
+    .h3 {
+        font-size: 32px;
+    }
+
+    h4,
+    .h4 {
+        font-size: 24px;
+    }
+
+    h5,
+    .h5 {
+        font-size: 20px;
+
+        @media #{$esm-screen} {
+            font-size: 18px;
+        }
+    }
+
+}
+
+@media #{$md-screen} {
+
+    h1,
+    .h1 {
+        font-size: 60px;
+    }
+
+    h2,
+    .h2 {
+        font-size: 52px;
+    }
+
+    h3,
+    .h3 {
+        font-size: 36px;
+    }
+
+    h4,
+    .h4 {
+        font-size: 24px;
+    }
+
+    h5,
+    .h5 {
+        font-size: 20px;
+    }
+}
+
+h1,
+.h1,
+h2,
+.h2,
+h3,
+.h3 {
+    font-weight: var(--f-bold);
+}
+
+h4,
+.h4,
+h5,
+.h5 {
+    font-weight: var(--f-medium);
+}
+
+h6,
+.h6 {
+    font-weight: var(--f-medium);
+}
+
+p {
+    font-size: var(--font-size-b1);
+    line-height: var(--line-height-b1);
+    margin-bottom: 32px;
+    color: var(--clr-body-text);
+
+    @media #{$sm-screen} {
+        font-size: var(--font-size-b3);
+        line-height: var(--line-height-b3);
+    }
+
+    &.has-large-font-size {
+        line-height: 1.5;
+        font-size: 36px;
+
+        @media #{$sm-screen} {
+            font-size: 16px;
+            line-height: 28px;
+        }
+    }
+
+    &.has-medium-font-size {
+        font-size: 17px;
+        line-height: 36px;
+
+        @media #{$md-screen} {
+            font-size: 18px;
+            line-height: 30px;
+        }
+
+        @media #{$sm-screen} {
+            font-size: 16px;
+            line-height: 28px;
+        }
+    }
+
+    &.has-small-font-size {
+        font-size: 12px;
+    }
+
+    &.has-very-light-gray-color {
+        color: var(--clr-white);
+    }
+
+    &.has-background {
+        padding: 20px 30px;
+    }
+
+    &.b1 {
+        font-size: var(--font-size-b1);
+        line-height: var(--line-height-b1);
+
+        @media #{$lg-screen} {
+            font-size: 16px;
+        }
+
+        @media #{$sm-screen} {
+            font-size: var(--font-size-b3);
+            line-height: var(--line-height-b3);
+        }
+    }
+
+    &.b2 {
+        font-size: var(--font-size-b2);
+        line-height: var(--line-height-b2);
+
+        @media #{$sm-screen} {
+            font-size: var(--font-size-b3);
+            line-height: var(--line-height-b3);
+        }
+    }
+
+    &.b3 {
+        font-size: var(--font-size-b3);
+        line-height: var(--line-height-b3);
+
+        @media #{$sm-screen} {
+            font-size: var(--font-size-b3);
+            line-height: var(--line-height-b3);
+        }
+    }
+
+    &.b4 {
+        font-size: var(--font-size-b4);
+        line-height: var(--line-height-b4);
+
+        @media #{$sm-screen} {
+            font-size: 10px;
+            line-height: 1;
+        }
+    }
+
+    &:last-child {
+        margin-bottom: 0;
+    }
+}
+
+.b1 {
+    font-size: var(--font-size-b1);
+    line-height: var(--line-height-b1);
+
+    @media #{$sm-screen} {
+        font-size: 16px;
+        line-height: 28px;
+    }
+}
+
+.b2 {
+    font-size: var(--font-size-b2);
+    line-height: var(--line-height-b2);
+
+    @media #{$sm-screen} {
+        font-size: 16px;
+        line-height: 28px;
+    }
+}
+
+.b3 {
+    font-size: var(--font-size-b3);
+    line-height: var(--line-height-b3);
+
+    @media #{$sm-screen} {
+        font-size: 16px;
+        line-height: 28px;
+    }
+}
+
+.b4 {
+    font-size: var(--font-size-b4);
+    line-height: var(--line-height-b4);
+
+    @media #{$sm-screen} {
+        font-size: 16px;
+        line-height: 28px;
+    }
+}
+
+table {
+    border-collapse: collapse;
+    border-spacing: 0;
+    margin: 0 0 20px;
+    width: 100%;
+}
+
+table a,
+table a:link,
+table a:visited {
+    text-decoration: none;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
