@@ -8,6 +8,15 @@ The only client→backend write in the system is the IPFS upload at `POST /v1/me
 returns a CID that the client then puts on-chain via `Launchpad.createToken(name, symbol, metadataURI)`.
 There is no `POST /tokens` and no `POST /trades`.
 
+## Notice
+
+This repository is being open-sourced as part of our commitment to transparency and community
+collaboration.
+
+Please note that some features are still under active development and may not yet be fully
+implemented or finalized. These improvements are part of our ongoing development roadmap and
+will be introduced through future updates.
+
 ## Layout
 
 pnpm workspace + Turborepo (`apps/*` and `packages/*`; `contracts/` is standalone — see below).
