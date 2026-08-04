@@ -6,7 +6,7 @@ import { launchpadAbi, tokenAbi, uniswapV2PairAbi } from "@lcai/abis";
 const launchpadAddress = (process.env.LAUNCHPAD_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as `0x${string}`;
 const startBlock = Number(process.env.START_BLOCK ?? 0);
-const chainId = Number(process.env.CHAIN_ID ?? 31337);
+const chainId = Number(process.env.CHAIN_ID ?? 1337);
 const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
 
 // The launchpad emits this for every new token. `token` is the freshly-deployed
@@ -14,10 +14,10 @@ const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
 // Transfer events for holder balances. Trade/Graduated are emitted by the
 // launchpad itself, so they don't need any dynamic registration.
 const tokenLaunched = parseAbiItem(
-  "event TokenLaunched(address indexed token, address indexed creator, string name, string symbol, string metadataURI, uint256 devBuyEth)",
+  "event TokenLaunched(address indexed token, address indexed creator, string name, string symbol, string metadataURI, uint256 devBuyEth)"
 );
 const graduated = parseAbiItem(
-  "event Graduated(address indexed token, address indexed pair, uint256 ethToLp, uint256 tokensToLp, uint256 tokensBurned, bool degradedPath)",
+  "event Graduated(address indexed token, address indexed pair, uint256 ethToLp, uint256 tokensToLp, uint256 tokensBurned, bool degradedPath)"
 );
 
 export default createConfig({

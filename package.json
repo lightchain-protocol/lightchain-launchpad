@@ -18,11 +18,14 @@
     "dev:frontend": "pnpm --filter @lcai/frontend dev",
     "build:frontend": "pnpm --filter @lcai/frontend build",
     "test": "pnpm -r test",
-    "db:up": "docker compose up -d postgres",
-    "db:down": "docker compose down",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d postgres",
+    "db:down": "docker compose -f docker-compose.dev.yml down",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
+    "docker:logs": "docker compose logs -f",
+    "dev:local": "make start",
+    "dev:infra": "make infra",
+    "dev:deploy": "make deploy"
   },
   "devDependencies": {
     "@lcai/eslint-config": "workspace:*",
@@ -35,19 +38,5 @@
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@10.33.4",
-  "pnpm": {
-    "overrides": {
-      "kysely": "0.26.3"
-    },
-    "onlyBuiltDependencies": [
-      "@parcel/watcher",
-      "@reown/appkit",
-      "bufferutil",
-      "esbuild",
-      "msw",
-      "sharp",
-      "utf-8-validate"
-    ]
-  }
+  "packageManager": "pnpm@10.33.4"
 }

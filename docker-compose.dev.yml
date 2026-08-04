@@ -1,0 +1,57 @@
+# Local development infrastructure: Postgres + Anvil.
+# Apps (indexer / api / web) run on the host via `make start` / `pnpm dev`.
+#
+#   make infra   # or: docker compose -f docker-compose.dev.yml up -d
+#   make start   # infra + deploy + all apps
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lcai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lcai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lcai}
+      POSTGRES_DB: ${POSTGRES_DB:-lcai_launchpad}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - lcai_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    container_name: lcai-anvil
+    restart: unless-stopped
+    # Image ENTRYPOINT is `sh -c`; override so flags are passed correctly.
+    entrypoint: ["anvil"]
+    command:
+      - --host=0.0.0.0
+      - --port=8545
+      - --chain-id=1337
+      - --block-time=6
+      - --accounts=10
+      - --balance=10000
+    ports:
+      - "${ANVIL_PORT:-8545}:8545"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "cast",
+          "block-number",
+          "--rpc-url",
+          "http://127.0.0.1:8545",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  lcai_pg_data:

@@ -13,73 +13,60 @@ export function TokenCard({ item }: { item: TokenListItem }) {
   const bondingPct = useMemo(() => Math.min(100, item.progressBps / 100), [item.progressBps]);
   const marketCapUSD = weiToNative(item.marketCap) * nativePrice;
   const imageUrl = ipfsToHttp(item.metadata.imageUrl);
-  const bannerUrl = ipfsToHttp(item.metadata.bannerUrl) ?? imageUrl;
   const tag = item.metadata.tags?.[0];
+  const creatorShort = `${item.creator.slice(0, 6)}…${item.creator.slice(-4)}`;
 
   return (
     <Link href={`/token/${item.address}`} className="group block">
-      <article className="glass-card h-full overflow-hidden rounded-2xl">
-        {/* Banner */}
-        <div className="relative aspect-[372/200] w-full overflow-hidden">
+      <article className="glass-card flex h-full gap-3 overflow-hidden rounded-2xl p-3">
+        {/* Left: square image */}
+        <div className="relative size-28 shrink-0 overflow-hidden rounded-xl sm:size-32">
           <img
-            src={bannerUrl || "/images/card/card-img-1.png"}
+            src={imageUrl || "/images/card/card-img-sm-1.png"}
             alt={item.name}
             className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-card via-card/20 to-transparent" />
-          {tag && (
-            <span className="absolute left-3 top-3 rounded-full border border-white/15 bg-black/40 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white backdrop-blur-md">
-              {tag}
-            </span>
-          )}
           {item.graduated && (
-            <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-success/20 px-2.5 py-1 text-[11px] font-semibold text-success ring-1 ring-success/40 backdrop-blur-md">
-              <CheckCircle2 size={12} /> Listed
+            <span className="absolute right-2 bottom-2 flex size-7 items-center justify-center rounded-full bg-success/20 text-success ring-1 ring-success/40 backdrop-blur-md">
+              <CheckCircle2 size={14} />
             </span>
           )}
         </div>
 
-        <div className="relative p-4 pt-9">
-          {/* avatar overlapping banner */}
-          <img
-            src={imageUrl || "/images/card/card-img-sm-1.png"}
-            className="absolute -top-7 left-4 h-14 w-14 rounded-xl object-cover ring-2 ring-card shadow-lg"
-            alt={item.name}
-          />
-
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              by <span className="text-primary">{item.creator.slice(0, 6)}…{item.creator.slice(-4)}</span>
-            </span>
-            <span>{dayjs(item.createdAt).fromNow()}</span>
-          </div>
-
-          <h3 className="mt-1.5 flex items-baseline gap-1.5 truncate font-display text-lg font-bold text-foreground transition-colors group-hover:text-primary">
-            {item.name}
-            <span className="text-sm font-medium text-muted-foreground">${item.symbol}</span>
-          </h3>
-
-          <p className="mt-1 line-clamp-2 min-h-[2.5rem] text-sm text-muted-foreground">
-            {item.metadata.description || "No description provided."}
-          </p>
-
-          <div className="mt-4 flex items-end justify-between">
-            <div>
-              <span className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Market Cap</span>
-              <p className="font-display text-lg font-bold text-foreground">${formatNumber(marketCapUSD, { notation: "compact" })}</p>
+        {/* Right: data rows */}
+        <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5 py-0.5">
+          <div className="space-y-1.5">
+            <div className="flex items-start justify-between gap-2">
+              <h3 className="font-display truncate text-base font-bold text-foreground transition-colors group-hover:text-primary sm:text-lg">
+                {item.symbol} <span className="font-medium text-muted-foreground">{item.name}</span>
+              </h3>
+              <span className="shrink-0 text-xs text-muted-foreground">{dayjs(item.createdAt).fromNow()}</span>
             </div>
-            {!item.graduated && (
-              <span className="text-sm font-semibold text-primary">{bondingPct.toFixed(0)}%</span>
+
+            {tag && (
+              <span className="inline-flex rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                {tag}
+              </span>
             )}
+
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-muted-foreground">created by:</span>
+              <span className="truncate font-mono text-primary">{creatorShort}</span>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-muted-foreground">Market Cap:</span>
+              <span className="font-display font-semibold text-foreground">
+                ${formatNumber(marketCapUSD, { notation: "compact" })}
+              </span>
+            </div>
           </div>
 
           {item.graduated ? (
-            <div className="mt-3 rounded-lg bg-gradient-to-r from-[#12b5de]/15 via-[#7130c3]/15 to-[#ff3bd4]/15 px-3 py-2 text-center text-xs font-semibold theme-gradient">
-              Graduated to LightDEX
-            </div>
+            <div className="text-gradient-flow py-1.5 text-xs font-semibold">Graduated to LightDEX</div>
           ) : (
-            <div className="mt-3">
-              <div className="shimmer relative h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
+            <div className="flex items-center gap-2">
+              <div className="shimmer relative h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/6">
                 <div
                   className="h-full rounded-full"
                   style={{
@@ -88,7 +75,7 @@ export function TokenCard({ item }: { item: TokenListItem }) {
                   }}
                 />
               </div>
-              <p className="mt-1.5 text-[11px] text-muted-foreground">Bonding curve progress</p>
+              <span className="shrink-0 text-xs font-semibold text-primary">{bondingPct.toFixed(1)}%</span>
             </div>
           )}
         </div>

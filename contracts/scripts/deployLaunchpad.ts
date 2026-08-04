@@ -1,6 +1,5 @@
 import hre from "hardhat";
 import { encodeFunctionData, getAddress, parseEther, type Address } from "viem";
-import { lcaiTestnet } from "../chains/lcaiTestnet";
 
 const WAD = 10n ** 18n;
 
@@ -56,8 +55,8 @@ export async function deployMockDex() {
  * every interaction. The implementation itself is only useful for verification.
  */
 export async function deployLaunchpad(opts: DeployOpts = {}) {
-  const publicClient = await hre.viem.getPublicClient({ chain: lcaiTestnet });
-  const [deployer] = await hre.viem.getWalletClients({ chain: lcaiTestnet });
+  const publicClient = await hre.viem.getPublicClient();
+  const [deployer] = await hre.viem.getWalletClients();
   const client = { public: publicClient, wallet: deployer };
 
   const owner = opts.owner ?? getAddress(deployer.account.address);
@@ -82,13 +81,11 @@ export async function deployLaunchpad(opts: DeployOpts = {}) {
     tradeFeeBps: opts.tradeFeeBps ?? DEFAULTS.tradeFeeBps,
     graduationFeeBps: opts.graduationFeeBps ?? DEFAULTS.graduationFeeBps,
     creatorFeeShareBps: opts.creatorFeeShareBps ?? DEFAULTS.creatorFeeShareBps,
-    gradCreatorShareBps:
-      opts.gradCreatorShareBps ?? DEFAULTS.gradCreatorShareBps,
+    gradCreatorShareBps: opts.gradCreatorShareBps ?? DEFAULTS.gradCreatorShareBps,
     totalSupply: opts.totalSupply ?? DEFAULTS.totalSupply,
     lpBps: opts.lpBps ?? DEFAULTS.lpBps,
     fundingGoal: opts.fundingGoal ?? DEFAULTS.fundingGoal,
-    virtualTokenReserve:
-      opts.virtualTokenReserve ?? DEFAULTS.virtualTokenReserve,
+    virtualTokenReserve: opts.virtualTokenReserve ?? DEFAULTS.virtualTokenReserve,
     maxBuyPerTx: opts.maxBuyPerTx ?? DEFAULTS.maxBuyPerTx,
     maxWalletBps: opts.maxWalletBps ?? DEFAULTS.maxWalletBps,
     tradeCooldown: opts.tradeCooldown ?? DEFAULTS.tradeCooldown,
@@ -100,11 +97,9 @@ export async function deployLaunchpad(opts: DeployOpts = {}) {
     args: [initArgs],
   });
 
-  const proxy = await hre.viem.deployContract(
-    "ERC1967Proxy",
-    [getAddress(launchpadImpl.address), initData],
-    { client },
-  );
+  const proxy = await hre.viem.deployContract("ERC1967Proxy", [getAddress(launchpadImpl.address), initData], {
+    client,
+  });
   const launchpad = await hre.viem.getContractAt("Launchpad", proxy.address, {
     client,
   });

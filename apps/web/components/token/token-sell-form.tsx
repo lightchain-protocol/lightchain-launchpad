@@ -60,10 +60,9 @@ export function TokenSellForm() {
     onSuccess: (hash) => {
       if (!hash) return;
       setTokenIn("");
-      toast.success("Sell transaction submitted");
-      queryClient.invalidateQueries({
-        queryKey: ["balance", account.address, chain.id, token.address],
-      });
+      toast.success("Sell confirmed");
+      // Prefix match refreshes native + ERC-20 balances for this account/chain.
+      void queryClient.invalidateQueries({ queryKey: ["balance", account.address, chain.id] });
     },
     onError: (error: { walk?: () => { shortMessage?: string; message?: string }; message?: string }) => {
       toast.error(error?.walk?.()?.shortMessage || error?.walk?.()?.message || error?.message || "Sell failed");

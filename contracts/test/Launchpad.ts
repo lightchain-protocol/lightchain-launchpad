@@ -13,6 +13,7 @@ const DEAD: Address = "0x000000000000000000000000000000000000dEaD";
 const gt = (a: bigint, b: bigint) => expect(a > b, `expected ${a} > ${b}`).to.equal(true);
 const gte = (a: bigint, b: bigint) => expect(a >= b, `expected ${a} >= ${b}`).to.equal(true);
 const lt = (a: bigint, b: bigint) => expect(a < b, `expected ${a} < ${b}`).to.equal(true);
+const lte = (a: bigint, b: bigint) => expect(a <= b, `expected ${a} <= ${b}`).to.equal(true);
 
 // ---------------------------------------------------------------------------
 // fixtures & helpers
@@ -222,6 +223,61 @@ describe("Launchpad", () => {
         .rejected;
     });
 
+    it("quoteBuyForTokens returns a gross that buys at least the requested tokens", async () => {
+      const { launchpad, token, tokenAddr, bob } = await loadFixture(launchedFixture);
+      const want = parseEther("1234567.89");
+      const [ethIn, ethInNet, fee] = (await launchpad.read.quoteBuyForTokens([tokenAddr, want])) as [
+        bigint,
+        bigint,
+        bigint,
+      ];
+      expect(ethIn).to.equal(ethInNet + fee);
+
+      // Matches the fee split `buy` / `quoteBuy` apply (feeOf), not ethIn - getAmountIn.
+      const [tokensFromGross, ethInNetFromBuy, feeFromBuy] = (await launchpad.read.quoteBuy([
+        tokenAddr,
+        ethIn,
+      ])) as [bigint, bigint, bigint, bigint];
+      expect(ethInNetFromBuy).to.equal(ethInNet);
+      expect(feeFromBuy).to.equal(fee);
+      gte(tokensFromGross, want);
+
+      await launchpad.write.buy([tokenAddr, want], { value: ethIn, account: bob.account });
+      gte(await token.read.balanceOf([getAddress(bob.account.address)]), want);
+    });
+
+    it("quoteBuyForTokens round-trips a quoteBuy fill without overpaying", async () => {
+      const { launchpad, tokenAddr } = await loadFixture(launchedFixture);
+      const ethSpend = parseEther("1");
+      const [tokensOut] = (await launchpad.read.quoteBuy([tokenAddr, ethSpend])) as [
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+      ];
+      const [ethIn] = (await launchpad.read.quoteBuyForTokens([tokenAddr, tokensOut])) as [
+        bigint,
+        bigint,
+        bigint,
+      ];
+      // May be 0–a few wei under the original spend from fee flooring; never more.
+      lte(ethIn, ethSpend);
+      const [tokensAgain] = (await launchpad.read.quoteBuy([tokenAddr, ethIn])) as [
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+      ];
+      gte(tokensAgain, tokensOut);
+    });
+
+    it("quoteBuyForTokens reverts when asking for more than remaining for-sale supply", async () => {
+      const { launchpad, tokenAddr } = await loadFixture(launchedFixture);
+      const remaining: bigint = await launchpad.read.maxSupplyForSaleOf([tokenAddr]);
+      await expect(launchpad.read.quoteBuyForTokens([tokenAddr, remaining + 1n])).to.be.rejected;
+      await expect(launchpad.read.quoteBuyForTokens([tokenAddr, 0n])).to.be.rejected;
+    });
+
     it("reverts on a zero-value buy", async () => {
       const { launchpad, tokenAddr, bob } = await loadFixture(launchedFixture);
       await expect(launchpad.write.buy([tokenAddr, 0n], { value: 0n, account: bob.account })).to.be.rejected;
@@ -330,6 +386,66 @@ describe("Launchpad", () => {
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
       expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
       expect(getAddress(await launchpad.read.pairOf([tokenAddr]))).to.equal(getAddress(preCreated));
+    });
+
+    it("supports exact-token buys via swapETHForExactTokens after graduation", async () => {
+      const { launchpad, token, tokenAddr, bob, carol, mockDex } = await loadFixture(launchedFixture);
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
+
+      const router = mockDex!.router;
+      const weth = getAddress(mockDex!.weth.address);
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
+      const pathBuy = [weth, tokenAddr] as const;
+      const want = parseEther("1000");
+      const amountsIn = (await router.read.getAmountsIn([want, pathBuy])) as readonly bigint[];
+      gt(amountsIn[0]!, 0n);
+
+      const before = (await token.read.balanceOf([getAddress(carol.account.address)])) as bigint;
+      await router.write.swapETHForExactTokens(
+        [want, [...pathBuy], getAddress(carol.account.address), deadline],
+        { value: amountsIn[0]! * 2n, account: carol.account },
+      );
+      expect(await token.read.balanceOf([getAddress(carol.account.address)])).to.equal(before + want);
+    });
+
+    it("supports post-graduation swaps via the mock Uniswap V2 router", async () => {
+      const { launchpad, token, tokenAddr, bob, carol, mockDex, publicClient } = await loadFixture(launchedFixture);
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
+      expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
+
+      const router = mockDex!.router;
+      const weth = getAddress(mockDex!.weth.address);
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
+      const pathBuy = [weth, tokenAddr] as const;
+      const pathSell = [tokenAddr, weth] as const;
+
+      const buyIn = parseEther("1");
+      const amountsBuy = (await router.read.getAmountsOut([buyIn, pathBuy])) as readonly bigint[];
+      gt(amountsBuy[1]!, 0n);
+
+      const tokensBefore = (await token.read.balanceOf([getAddress(carol.account.address)])) as bigint;
+      await router.write.swapExactETHForTokens(
+        [amountsBuy[1]!, [...pathBuy], getAddress(carol.account.address), deadline],
+        { value: buyIn, account: carol.account },
+      );
+      const tokensAfter = (await token.read.balanceOf([getAddress(carol.account.address)])) as bigint;
+      expect(tokensAfter - tokensBefore).to.equal(amountsBuy[1]!);
+
+      const sellAmount = tokensAfter;
+      await token.write.approve([getAddress(router.address), sellAmount], { account: carol.account });
+      const amountsSell = (await router.read.getAmountsOut([sellAmount, pathSell])) as readonly bigint[];
+      gt(amountsSell[1]!, 0n);
+
+      const ethBefore = await bal(publicClient, getAddress(carol.account.address));
+      const hash = await router.write.swapExactTokensForETH(
+        [sellAmount, 0n, [...pathSell], getAddress(carol.account.address), deadline],
+        { account: carol.account },
+      );
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      const gas = receipt.gasUsed * receipt.effectiveGasPrice;
+      const ethAfter = await bal(publicClient, getAddress(carol.account.address));
+      expect(ethAfter + gas - ethBefore).to.equal(amountsSell[1]!);
+      expect(await token.read.balanceOf([getAddress(carol.account.address)])).to.equal(0n);
     });
 
     it("blocks reentrancy on the buy refund path", async () => {

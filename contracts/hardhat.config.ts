@@ -8,9 +8,7 @@ const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || "";
 // Mainnet forking is only enabled when an Alchemy key is provided. The full
 // test-suite (including the graduation path) runs against in-repo Uniswap V2
 // mocks and does NOT require a fork; the optional `*.fork.ts` specs do.
-const forking = ALCHEMY_API_KEY
-  ? { url: `https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}` }
-  : undefined;
+const forking = ALCHEMY_API_KEY ? { url: `https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}` } : undefined;
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -29,7 +27,9 @@ const config: HardhatUserConfig = {
   networks: {
     hardhat: forking ? { forking } : {},
     localhost: {
-      url: "http://127.0.0.1:8545",
+      url: process.env.RPC_URL || "http://127.0.0.1:8545",
+      chainId: 1337,
+      // Omit accounts → Hardhat's well-known keys (same as Anvil defaults).
       accounts: WALLET_PRIVATE_KEY ? [WALLET_PRIVATE_KEY] : undefined,
     },
     lcaiTestnet: {

@@ -9,7 +9,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/lcai_launchpad}
       DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
       RPC_URL: ${RPC_URL:-https://host.docker.internal:8545}
-      CHAIN_ID: ${CHAIN_ID:-31337}
+      CHAIN_ID: ${CHAIN_ID:-1337}
       LAUNCHPAD_ADDRESS: ${LAUNCHPAD_ADDRESS:-0x0000000000000000000000000000000000000000}
       START_BLOCK: ${START_BLOCK:-0}
       FINALITY_BLOCK_COUNT: ${FINALITY_BLOCK_COUNT:-0}

@@ -31,7 +31,7 @@ export function TokenHolderTable() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center rounded-xl bg-card py-16">
+      <div className="flex justify-center py-16">
         <Loader2 className="size-8 animate-spin text-primary" />
       </div>
     );

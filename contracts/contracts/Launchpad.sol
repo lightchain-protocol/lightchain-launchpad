@@ -199,6 +199,7 @@ contract Launchpad is
     error MaxWalletExceeded();
     error CooldownActive();
     error CurveSoldOut();
+    error ExceedsForSaleSupply();
     error NothingToClaim();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -639,6 +640,21 @@ contract Launchpad is
         return _quoteBuy(c, ethIn);
     }
 
+    /// @notice Quote the gross native required to buy at least `tokensOut` (no clamp/refund).
+    /// @dev Inverse of `quoteBuy` for fills within the remaining for-sale supply.
+    ///      `ethIn == ethInNet + fee` with `fee = feeOf(ethIn)` — the same split `buy`
+    ///      applies. Buying with `ethIn` yields at least `tokensOut` (curve-favouring
+    ///      rounding can deliver a few wei of extra tokens).
+    function quoteBuyForTokens(address token, uint256 tokensOut)
+        external
+        view
+        returns (uint256 ethIn, uint256 ethInNet, uint256 fee)
+    {
+        Curve storage c = _curves[token];
+        if (c.fundingGoal == 0) revert UnknownToken();
+        return _quoteBuyForTokens(c, tokensOut);
+    }
+
     /// @notice Quote a sell of `tokenAmount` tokens. Returns the net native received and the fee.
     function quoteSell(address token, uint256 tokenAmount) public view returns (uint256 ethOutNet, uint256 fee) {
         Curve storage c = _curves[token];
@@ -691,6 +707,27 @@ contract Launchpad is
             fee = grossUsed - netExact;
             refund = ethIn - grossUsed;
         }
+    }
+
+    function _quoteBuyForTokens(Curve storage c, uint256 tokensOut)
+        internal
+        view
+        returns (uint256 ethIn, uint256 ethInNet, uint256 fee)
+    {
+        if (tokensOut == 0) revert ZeroAmount();
+        uint256 remaining = uint256(c.maxSupplyForSale) - uint256(c.tokensSold);
+        if (remaining == 0) revert CurveSoldOut();
+        if (tokensOut > remaining) revert ExceedsForSaleSupply();
+
+        uint256 ethReserveEff = uint256(c.virtualEthReserve) + uint256(c.realEthRaised);
+        uint256 tokenReserveEff = uint256(c.virtualTokenReserve) - uint256(c.tokensSold);
+
+        // Minimum net that produces >= tokensOut, then lift to a gross whose
+        // post-feeOf remainder covers that net — same fee path as `_quoteBuy`/`buy`.
+        uint256 ethInNetRequired = CurveMath.getAmountIn(tokensOut, ethReserveEff, tokenReserveEff);
+        ethIn = CurveMath.grossForNet(ethInNetRequired, c.tradeFeeBps);
+        fee = CurveMath.feeOf(ethIn, c.tradeFeeBps);
+        ethInNet = ethIn - fee;
     }
 
     // ================================================================

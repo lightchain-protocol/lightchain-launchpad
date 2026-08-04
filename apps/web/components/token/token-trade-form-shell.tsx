@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Wallet } from "lucide-react";
+import { ArrowLeftRight, Loader2, Wallet } from "lucide-react";
 import type { SubmitEvent, ReactNode } from "react";
 
 import { BrandButton } from "@/components/ui/brand-button";
@@ -20,6 +20,7 @@ export type TokenTradeFormShellProps = {
   amountPresets?: number[];
   percentagePresets?: number[];
   onPercentagePreset?: (percentage: number) => void;
+  onSwitchInput?: () => void;
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
   submitDisabled?: boolean;
   submitLabel: ReactNode;
@@ -38,6 +39,7 @@ export function TokenTradeFormShell({
   amountPresets,
   percentagePresets,
   onPercentagePreset,
+  onSwitchInput,
   onSubmit,
   submitDisabled = false,
   submitLabel,
@@ -60,12 +62,28 @@ export function TokenTradeFormShell({
               min={0}
               step="any"
               onChange={(e) => onAmountChange(e.target.value)}
-              className="border-0 bg-transparent! py-0 pr-24 pl-0 text-lg shadow-none focus-visible:ring-0"
+              className={cn(
+                "border-0 bg-transparent! py-0 pl-0 text-lg shadow-none focus-visible:ring-0",
+                onSwitchInput ? "pr-36" : "pr-24",
+              )}
             />
             <div className="absolute top-1/2 right-0 flex -translate-y-1/2 items-center gap-2">
-              <span className="text-sm font-medium">{assetSymbol}</span>
+              <span className="max-w-24 truncate text-sm font-medium">{assetSymbol}</span>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={assetIconSrc} width={28} height={28} className="rounded-full object-cover" alt="" />
+              {onSwitchInput && (
+                <>
+                  <div className="h-5 w-px bg-border" />
+                  <button
+                    type="button"
+                    onClick={onSwitchInput}
+                    aria-label="Switch input currency"
+                    className="rounded-md p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  >
+                    <ArrowLeftRight size={16} />
+                  </button>
+                </>
+              )}
             </div>
           </div>
 

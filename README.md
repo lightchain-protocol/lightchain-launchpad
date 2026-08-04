@@ -81,25 +81,47 @@ resolved on-chain **once** at graduation and persisted on the `graduations` row,
 path never hits RPC. The frontend mirrors the split: `useTradeFunctions` (curve, through the
 launchpad) and `useDexSwapFunctions` (router `getAmountsOut` + swap).
 
-## Quick start (local)
+## Quick start (local Anvil)
+
+One-command local stack (Postgres + Anvil in Docker, contracts deployed, all apps on the host):
+
+```sh
+make setup    # once: pnpm + contracts npm install, seed .env files
+make start    # infra → deploy → pnpm dev (indexer :42069, api :3001, web :3000)
+```
+
+Useful targets:
+
+| Target        | What it does                                      |
+| ------------- | ------------------------------------------------- |
+| `make infra`  | Start Postgres (`:5432`) + Anvil (`:8545`)        |
+| `make deploy` | Deploy launchpad (+ mock Uniswap) to Anvil, sync env |
+| `make apps`   | `pnpm dev` — indexer, API, frontend               |
+| `make reset`  | Wipe volumes, redeploy                            |
+| `make down`   | Stop infra                                        |
+| `make smoke`  | `curl` health / status / tokens                   |
+
+Anvil account #0 (funded) for MetaMask / AppKit:
+
+- address `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`
+- private key `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
+- RPC `http://127.0.0.1:8545`, chain id `1337`
+
+`make deploy` writes `contracts/deployments/localhost.json` and updates
+`apps/indexer/.env`, `apps/api/.env`, and `apps/web/.env.local` (including
+`NEXT_PUBLIC_ENABLE_LOCALHOST=true` so the frontend defaults to Anvil).
+
+### Manual / without Make
 
 ```sh
 pnpm install
-pnpm --filter @lcai/abis build       # consumers resolve dist/; the dev scripts also do this
+pnpm --filter @lcai/abis build
+docker compose -f docker-compose.dev.yml up -d
+./scripts/dev/deploy-local.sh
+pnpm dev
 ```
 
-Start a Postgres and point `DATABASE_URL` at it (there is no `postgres` service in
-`docker-compose.yml`), then:
-
-```sh
-cp apps/api/.env.example     apps/api/.env
-cp apps/indexer/.env.example apps/indexer/.env
-```
-
-Deploy the contracts (below) and note the printed **Launchpad proxy address + start block** —
-set them in `apps/indexer/.env` (`LAUNCHPAD_ADDRESS`, `START_BLOCK`), and set
-`LAUNCHPAD_ADDRESS` to the same value in `apps/api/.env` (used to exclude the launchpad from
-"top holders" — it holds each token's unsold supply).
+Or copy env files and run apps after `make infra` + `make deploy`:
 
 ```sh
 pnpm dev            # everything, via Turborepo
@@ -109,9 +131,11 @@ pnpm dev:api        # Fastify on :3001, Swagger UI at /v1/docs
 pnpm dev:frontend   # Next.js on :3000
 ```
 
-Smoke test:
+Smoke test (with apps running):
 
 ```sh
+make smoke
+# or:
 curl http://localhost:3001/v1/health
 curl http://localhost:3001/v1/status
 curl http://localhost:3001/v1/tokens
@@ -129,9 +153,11 @@ npx hardhat compile
 npx hardhat test --network hardhat            # full unit + graduation suite, uses in-repo Uniswap V2 mocks
 REPORT_GAS=true npx hardhat test --network hardhat
 
-npx hardhat node                              # then, in another shell:
-DEX_ROUTER=0x… TREASURY=0x… npx hardhat run scripts/deploy.ts --network localhost
+npx hardhat node                              # or: make infra (Anvil in Docker)
+# then, in another shell:
+npx hardhat run scripts/deploy.ts --network localhost
 # DEX_ROUTER unset ⇒ deploys mock Uniswap V2 (handy on a fresh node)
+# Writes contracts/deployments/localhost.json — then: make sync-env
 
 FUNDING_GOAL=30 npx hardhat run scripts/calculateBondingCurve.ts   # curve param helper
 ```

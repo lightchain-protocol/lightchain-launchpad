@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
@@ -18,6 +17,7 @@ import { ipfsToHttp, weiToNative } from "@/lib/ipfs";
 import { formatNumber, normalizeTokenAddress } from "@/lib/utils";
 import tokenQuery from "@/queries/tokenQuery";
 import useCurrentChain from "@/hooks/useCurrentChain";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useRealtimeRoom, useSocketIOEvent } from "@/hooks/useSocketIoEvent";
 import useStore from "@/store";
 import type {
@@ -29,9 +29,11 @@ import type {
   Trade,
   TradeEventPayload,
 } from "@/types";
-import { Card, CardContent } from "@lcai/ui/components/card";
+import { Card } from "@lcai/ui/components/card";
 import { Progress } from "@lcai/ui/components/progress";
 import { cn } from "@lcai/ui/lib/utils";
+
+type MobileTab = "info" | "chart" | "trade";
 
 function applyTradeToTokenDetail(old: TokenDetail, dto: Token, trade: Trade): TokenDetail {
   return {
@@ -51,20 +53,129 @@ function applyTradeToTokenDetail(old: TokenDetail, dto: Token, trade: Trade): To
   };
 }
 
-function StatCard({ label, value, className }: { label: string; value: string; className?: string }) {
+function truncateAddress(value: string) {
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
+function CopyableAddress({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = () => {
+    void navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   return (
-    <div className={cn("bg-flashlight rounded-xl border border-border/60 bg-card p-4", className)}>
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-semibold">{value}</p>
+    <button
+      type="button"
+      onClick={onCopy}
+      className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 font-mono text-xs text-muted-foreground transition hover:bg-muted hover:text-foreground"
+    >
+      <span className="text-muted-foreground/80">{label}</span>
+      <span>{truncateAddress(value)}</span>
+      {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+    </button>
+  );
+}
+
+function StatItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 border-border/50 px-4 py-3.5 odd:border-r sm:border-r sm:last:border-r-0">
+      <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+function StatPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-full border border-border/60 bg-muted/30 px-3 py-1.5">
+      <span className="text-[10px] text-muted-foreground uppercase">{label} </span>
+      <span className="text-xs font-semibold tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+function MobileTopTabs({ value, onChange }: { value: MobileTab; onChange: (tab: MobileTab) => void }) {
+  const tabs: { id: MobileTab; label: string }[] = [
+    { id: "info", label: "Info" },
+    { id: "chart", label: "Chart" },
+    { id: "trade", label: "$ Buy/Sell" },
+  ];
+
+  return (
+    <div className="sticky top-[4.75rem] z-20 -mx-4 border-b border-border/60 bg-background/95 px-4 backdrop-blur supports-backdrop-filter:bg-background/80 lg:hidden">
+      <div className="flex">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onChange(tab.id)}
+            className={cn(
+              "relative flex-1 py-3 text-center text-sm font-semibold transition",
+              value === tab.id ? "text-primary" : "text-muted-foreground"
+            )}
+          >
+            {tab.label}
+            {value === tab.id && (
+              <span className="absolute inset-x-4 -bottom-px h-0.5 rounded-full bg-primary shadow-[0_0_12px] shadow-primary/60" />
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BondingCurveCard({
+  percentage,
+  graduated,
+  remainingForSale,
+  symbol,
+  raised,
+  goal,
+  nativeSymbol,
+}: {
+  percentage: number;
+  graduated: boolean;
+  remainingForSale: number;
+  symbol: string;
+  raised: number;
+  goal: number;
+  nativeSymbol: string;
+}) {
+  return (
+    <div className="bg-flashlight space-y-3 rounded-xl border border-border/60 bg-card p-4">
+      <h4 className="flex items-baseline justify-between gap-2 text-sm font-medium">
+        Bonding Curve Progress
+        <span className="text-primary tabular-nums">{percentage.toFixed(2)}%</span>
+      </h4>
+      <Progress value={percentage} className="h-2.5" />
+      {graduated ? (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          This coin has graduated. Trading continues on LightDEX.
+        </p>
+      ) : (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          There are {formatNumber(remainingForSale)} {symbol} still available for sale in the bonding curve and{" "}
+          {raised.toLocaleString(undefined, { maximumFractionDigits: 6 })} /{" "}
+          {goal.toLocaleString(undefined, { maximumFractionDigits: 6 })} {nativeSymbol} raised. At the funding goal,
+          liquidity is seeded on LightDEX and LP is burned.
+        </p>
+      )}
     </div>
   );
 }
 
 export function TokenDetails() {
   const chain = useCurrentChain();
-  const [isCopied, setIsCopied] = useState(false);
   const { nativePrice } = useStore();
   const queryClient = useQueryClient();
+  const [mobileTab, setMobileTab] = useState<MobileTab>("chart");
+  // Avoid mounting TradingView in a `display:none` tree (or twice) — it won't paint.
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   const { address: rawAddress } = useParams<{ address: string }>();
   const address = normalizeTokenAddress(rawAddress);
@@ -83,6 +194,7 @@ export function TokenDetails() {
   const volume24hNative = weiToNative(token.volume24h);
   const fundingRaisedNative = weiToNative(token.realEthRaised);
   const fundingGoalNative = weiToNative(token.fundingGoal);
+  const nativeSymbol = chain.nativeCurrency.symbol;
 
   const bondingCurvePercentage = useMemo(() => Math.min(100, token.progressBps / 100), [token.progressBps]);
 
@@ -96,15 +208,7 @@ export function TokenDetails() {
     }
   }, [token.maxSupplyForSale, token.tokensSold]);
 
-  const imageUrl = ipfsToHttp(token.metadata.imageUrl);
-  const bannerUrl = ipfsToHttp(token.metadata.bannerUrl) ?? imageUrl;
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(token.address).then(() => {
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    });
-  };
+  const imageUrl = ipfsToHttp(token.metadata.imageUrl) || "/images/card/card-img-sm-1.png";
 
   useSocketIOEvent<TradeEventPayload>(
     (data) => {
@@ -174,106 +278,204 @@ export function TokenDetails() {
     });
   }, []);
 
+  const socialLinks = (
+    <>
+      {token.metadata.website && (
+        <Link
+          href={token.metadata.website}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          aria-label="Website"
+        >
+          <Globe size={14} />
+        </Link>
+      )}
+      {token.metadata.telegram && (
+        <Link
+          href={token.metadata.telegram}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          aria-label="Telegram"
+        >
+          <Send size={14} />
+        </Link>
+      )}
+    </>
+  );
+
+  const tokenHeader = (opts?: { compact?: boolean }) => (
+    <div className={cn("flex w-full justify-between gap-4", opts?.compact ? "items-center" : "items-start")}>
+      <div className="flex min-w-0 items-start gap-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={imageUrl}
+          alt={token.name}
+          className={cn(
+            "shrink-0 rounded-xl object-cover ring-1 ring-border/60",
+            opts?.compact ? "size-11" : "size-14"
+          )}
+        />
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1
+              className={cn("truncate font-bold tracking-tight", opts?.compact ? "text-base" : "text-xl md:text-2xl")}
+            >
+              {token.name}
+              <span className="text-muted-foreground"> / {nativeSymbol}</span>
+            </h1>
+            {!opts?.compact && (
+              <span className="rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-muted-foreground uppercase">
+                {token.symbol}
+              </span>
+            )}
+            {token.graduated && (
+              <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                Graduated
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            <CopyableAddress label="CA" value={token.address} />
+            {!opts?.compact && <CopyableAddress label="DEV" value={token.creator} />}
+            {socialLinks}
+          </div>
+        </div>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className={cn("font-bold tracking-tight tabular-nums", opts?.compact ? "text-base" : "text-xl md:text-3xl")}>
+          {formatNumber(token.priceNative, { maximumFractionDigits: 10 })}
+          <span className="ml-1 text-sm font-semibold text-muted-foreground">{nativeSymbol}</span>
+        </p>
+        <p className="text-xs text-muted-foreground tabular-nums">
+          ${formatNumber(priceUSD, { maximumFractionDigits: 8 })}
+        </p>
+      </div>
+    </div>
+  );
+
+  const statsStripDesktop = (
+    <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border/60 bg-card sm:grid-cols-4">
+      <StatItem label="Market Cap" value={`$${formatNumber(marketCapUSD)}`} />
+      <StatItem label="Virtual Liquidity" value={`$${formatNumber(liquidityUSD)}`} />
+      <StatItem label="24H Volume" value={`${formatNumber(volume24hNative)} ${nativeSymbol}`} />
+      <StatItem label="Created" value={dayjs(token.createdAt).fromNow()} />
+    </div>
+  );
+
+  const statsPillsMobile = (
+    <div className="flex flex-wrap gap-2">
+      <StatPill label="MC" value={`$${formatNumber(marketCapUSD)}`} />
+      <StatPill label="Liq" value={`$${formatNumber(liquidityUSD)}`} />
+      <StatPill label="Vol" value={`${formatNumber(volume24hNative)} ${nativeSymbol}`} />
+    </div>
+  );
+
+  const bondingCard = (
+    <BondingCurveCard
+      percentage={bondingCurvePercentage}
+      graduated={token.graduated}
+      remainingForSale={remainingForSaleNative}
+      symbol={token.symbol}
+      raised={fundingRaisedNative}
+      goal={fundingGoalNative}
+      nativeSymbol={nativeSymbol}
+    />
+  );
+
+  const holdersCard = <TokenHolderTable />;
+
+  const tradesCard = <TokenTradeTable trades={trades} />;
+
+  let mobileBody: ReactNode;
+  switch (mobileTab) {
+    case "info":
+      mobileBody = (
+        <div className="space-y-4">
+          {tokenHeader()}
+          <div className="space-y-2 rounded-xl border border-border/60 bg-card p-4 text-sm">
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground">Created</span>
+              <span>{dayjs(token.createdAt).fromNow()}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground">Creator</span>
+              <CopyableAddress label="DEV" value={token.creator} />
+            </div>
+            {token.metadata.description && <p className="pt-2 text-muted-foreground">{token.metadata.description}</p>}
+          </div>
+          {bondingCard}
+          {holdersCard}
+        </div>
+      );
+      break;
+    case "trade":
+      mobileBody = (
+        <div className="space-y-4">
+          {tokenHeader({ compact: true })}
+          <TokenTradePanel />
+        </div>
+      );
+      break;
+    case "chart":
+      mobileBody = (
+        <div className="space-y-4">
+          {tokenHeader({ compact: true })}
+          {statsPillsMobile}
+          <p className="text-xs text-muted-foreground">
+            Created {dayjs(token.createdAt).fromNow()} ·{" "}
+            <span className="font-mono">{truncateAddress(token.creator)}</span>
+          </p>
+          <TokenChart />
+          {tradesCard}
+        </div>
+      );
+      break;
+    default: {
+      const _exhaustive: never = mobileTab;
+      void _exhaustive;
+      mobileBody = null;
+    }
+  }
+
   return (
-    <div className="lclp-section-gap">
-      <div className="container mx-auto space-y-10 px-4">
-        <Card className="overflow-hidden border-border/60">
-          <div className="flex flex-col lg:flex-row">
-            <div className="relative h-64 w-full shrink-0 p-6 lg:h-auto lg:w-80">
-              <img
-                src={bannerUrl || "/images/card/card-img-1.png"}
-                alt={token.name}
-                className="h-full w-full rounded-lg object-contain"
-              />
-            </div>
-            <CardContent className="relative flex-1 space-y-4 p-6">
-              <p className="text-sm text-muted-foreground">
-                Created by <span className="text-primary">{token.creator.slice(0, 10)}…</span>
-              </p>
-              <div className="flex flex-wrap items-center gap-4">
-                <h1 className="text-2xl font-bold md:text-3xl">
-                  {token.name} ($ {token.symbol})
-                </h1>
-                <img
-                  src={imageUrl || "/images/card/card-img-sm-1.png"}
-                  className="h-12 w-12 rounded-lg object-cover"
-                  alt={token.symbol}
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-                <span className="text-muted-foreground">Contract:</span>
-                <span className="break-all">{token.address}</span>
-                <button type="button" onClick={handleCopy} aria-label="Copy address">
-                  {isCopied ? (
-                    <Check size={16} className="text-green-500" />
-                  ) : (
-                    <Copy size={16} className="text-muted-foreground hover:text-foreground" />
-                  )}
-                </button>
-              </div>
-              <p className="text-sm text-muted-foreground">{token.metadata.description}</p>
-              <div className="flex gap-3">
-                {token.metadata.website && (
-                  <Link href={token.metadata.website} target="_blank" className="text-primary">
-                    <Globe size={18} />
-                  </Link>
-                )}
-                {token.metadata.telegram && (
-                  <Link href={token.metadata.telegram} target="_blank" className="text-primary">
-                    <Send size={18} />
-                  </Link>
-                )}
-              </div>
-            </CardContent>
-          </div>
-        </Card>
+    <div className="lclp-section-gap-top pb-16">
+      <div className="container mx-auto space-y-5 px-4">
+        {isDesktop === false && (
+          <>
+            <MobileTopTabs value={mobileTab} onChange={setMobileTab} />
+            {mobileBody}
+          </>
+        )}
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <StatCard label="Price" value={`$${formatNumber(priceUSD, { maximumFractionDigits: 8 })}`} />
-          <StatCard label="Market Cap" value={`$${formatNumber(marketCapUSD)}`} />
-          <StatCard label="Virtual Liquidity" value={`$${formatNumber(liquidityUSD)}`} />
-          <StatCard label="24H Volume" value={`${formatNumber(volume24hNative)} ${chain.nativeCurrency.symbol}`} />
-          <StatCard label="Token Created" value={dayjs(token.createdAt).fromNow()} />
-        </div>
+        {isDesktop === true && (
+          <div className="space-y-5">
+            {tokenHeader()}
 
-        <div className="grid gap-8 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <TokenChart />
-          </div>
-          <div className="space-y-6">
-            <TokenTradePanel />
+            {statsStripDesktop}
 
-            <div className="space-y-3 rounded-xl border border-border/60 bg-card p-4">
-              <h4 className="flex justify-between gap-2 font-medium">
-                Bonding Curve Progress
-                <span> {bondingCurvePercentage.toFixed(2)}%</span>
-              </h4>
-              <Progress value={bondingCurvePercentage} className="h-3" />
-              {token.graduated ? (
-                <p className="text-sm text-muted-foreground">Coin has graduated!</p>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  There are {formatNumber(remainingForSaleNative)} {token.symbol} still available for sale in the
-                  bonding curve and{" "}
-                  {fundingRaisedNative.toLocaleString(undefined, {
-                    maximumFractionDigits: 6,
-                  })}{" "}
-                  / {fundingGoalNative.toLocaleString(undefined, { maximumFractionDigits: 6 })}{" "}
-                  {chain.nativeCurrency.symbol} has been raised.
-                </p>
-              )}
+            <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
+              <div className="min-w-0 space-y-5">
+                <TokenChart />
+                {tradesCard}
+              </div>
+
+              <aside className="space-y-4 lg:sticky lg:top-20">
+                <TokenTradePanel />
+                {bondingCard}
+                {holdersCard}
+              </aside>
             </div>
           </div>
-        </div>
+        )}
 
-        <div className="grid gap-8 lg:grid-cols-5">
-          <div className="lg:col-span-3">
-            <TokenTradeTable trades={trades} />
+        {isDesktop === undefined && (
+          <div className="space-y-5">
+            {tokenHeader({ compact: true })}
+            <div className="h-125 animate-pulse rounded-xl border border-border/60 bg-muted/20" />
           </div>
-          <div className="lg:col-span-2">
-            <TokenHolderTable />
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

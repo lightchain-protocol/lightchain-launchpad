@@ -23,6 +23,19 @@ export default function useTradeFunctions() {
     return { tokensOut, ethInNet, fee, refund };
   };
 
+  /** Exact token-out → gross ETH-in quote via on-chain `quoteBuyForTokens`. */
+  const quoteBuyForTokens = async (
+    token: Pick<Token, "address">,
+    tokensOut: string,
+  ): Promise<{ ethIn: bigint; ethInNet: bigint; fee: bigint; tokensOut: bigint }> => {
+    const desired = parseEther(tokensOut);
+    const [ethIn, ethInNet, fee] = await launchpadContract.read.quoteBuyForTokens([
+      token.address,
+      desired,
+    ]);
+    return { ethIn, ethInNet, fee, tokensOut: desired };
+  };
+
   /** token-in → ETH-out quote. */
   const quoteSell = async (
     token: Pick<Token, "address">,
@@ -104,7 +117,29 @@ export default function useTradeFunctions() {
       [token.address, minTokensOut],
       { value: parseEther(ethIn), account: walletClient.account.address },
     );
-    return walletClient.writeContract(request);
+    const hash = await walletClient.writeContract(request);
+    await publicClient.waitForTransactionReceipt({ hash });
+    return hash;
+  };
+
+  /** Buy targeting an exact token amount; spends the quoted gross ETH. */
+  const buyTokenForTokens = async (
+    token: Token,
+    tokensOut: string,
+  ): Promise<`0x${string}` | undefined> => {
+    if (!walletClient) return;
+    if (token.graduated) throw new Error("token has graduated; trade on the DEX");
+
+    const { ethIn, tokensOut: desired } = await quoteBuyForTokens(token, tokensOut);
+    const minTokensOut = applySlippage(desired, "min");
+
+    const { request } = await launchpadContract.simulate.buy(
+      [token.address, minTokensOut],
+      { value: ethIn, account: walletClient.account.address },
+    );
+    const hash = await walletClient.writeContract(request);
+    await publicClient.waitForTransactionReceipt({ hash });
+    return hash;
   };
 
   /**
@@ -139,8 +174,18 @@ export default function useTradeFunctions() {
       [token.address, tokenAmount, minEthOut],
       { account: walletClient.account.address },
     );
-    return walletClient.writeContract(request);
+    const hash = await walletClient.writeContract(request);
+    await publicClient.waitForTransactionReceipt({ hash });
+    return hash;
   };
 
-  return { createToken, buyToken, sellToken, quoteBuy, quoteSell };
+  return {
+    createToken,
+    buyToken,
+    buyTokenForTokens,
+    sellToken,
+    quoteBuy,
+    quoteBuyForTokens,
+    quoteSell,
+  };
 }

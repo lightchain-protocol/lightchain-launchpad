@@ -1,3 +1,16 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# Was package.json#pnpm — pnpm ≥10.33 reads these from the workspace file only.
+overrides:
+  kysely: 0.26.3
+
+onlyBuiltDependencies:
+  - "@parcel/watcher"
+  - "@reown/appkit"
+  - bufferutil
+  - esbuild
+  - msw
+  - sharp
+  - utf-8-validate

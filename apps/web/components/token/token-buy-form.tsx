@@ -16,15 +16,18 @@ import useCurrentChain from "@/hooks/useCurrentChain";
 import useDexSwapFunctions from "@/hooks/useDexSwapFunctions";
 import useTradeFunctions from "@/hooks/useTradeFunctions";
 import { useDebouncedValue } from "@/hooks/useDebounce";
+import { ipfsToHttp } from "@/lib/ipfs";
 import tokenQuery from "@/queries/tokenQuery";
 import { formatNumber } from "@/lib/utils";
 
 const AMOUNT_PRESETS = [0.1, 0.5, 1] as const;
 
+type BuyInputMode = "native" | "token";
+
 export function TokenBuyForm() {
   const chain = useCurrentChain();
-  const { quoteBuy, buyToken } = useTradeFunctions();
-  const { quoteDexBuy, dexBuyToken } = useDexSwapFunctions();
+  const { quoteBuy, quoteBuyForTokens, buyToken, buyTokenForTokens } = useTradeFunctions();
+  const { quoteDexBuy, quoteDexBuyForTokens, dexBuyToken, dexBuyTokenForTokens } = useDexSwapFunctions();
   const { address } = useParams<{ address: string }>();
   const { data: token } = useSuspenseQuery(tokenQuery(address));
   const account = useConnection();
@@ -32,31 +35,58 @@ export function TokenBuyForm() {
   const queryClient = useQueryClient();
 
   const balance = useBalance({ enabled: !!account.address });
-  const [ethIn, setEthIn] = useState("");
-  const debouncedEthIn = useDebouncedValue(ethIn, 500);
+  const [inputMode, setInputMode] = useState<BuyInputMode>("native");
+  const [amount, setAmount] = useState("");
+  const debouncedAmount = useDebouncedValue(amount, 500);
+
+  const nativeSymbol = chain.nativeCurrency.symbol;
+  const tokenIconSrc = ipfsToHttp(token.metadata.imageUrl) || "/images/card/card-img-sm-1.png";
+  const isTokenMode = inputMode === "token";
 
   const quote = useQuery({
-    queryKey: ["quoteBuy", token.address, debouncedEthIn, token.graduated],
+    queryKey: ["quoteBuy", token.address, debouncedAmount, token.graduated, inputMode],
     queryKeyHashFn: hashFn,
-    queryFn: () =>
-      token.graduated
-        ? quoteDexBuy(token, debouncedEthIn).then((r) => ({ tokensOut: r.tokensOut }))
-        : quoteBuy(token, debouncedEthIn),
-    enabled: !!token.address && !!debouncedEthIn,
+    queryFn: async () => {
+      if (isTokenMode) {
+        const result = token.graduated
+          ? await quoteDexBuyForTokens(token, debouncedAmount)
+          : await quoteBuyForTokens(token, debouncedAmount);
+        return { ethIn: result.ethIn, tokensOut: result.tokensOut };
+      }
+      const result = token.graduated
+        ? await quoteDexBuy(token, debouncedAmount).then((r) => ({ tokensOut: r.tokensOut }))
+        : await quoteBuy(token, debouncedAmount);
+      return { ethIn: undefined as bigint | undefined, tokensOut: result.tokensOut };
+    },
+    enabled: !!token.address && !!debouncedAmount,
   });
 
+  const ethCost = useMemo(() => {
+    if (isTokenMode) {
+      return quote.data?.ethIn !== undefined ? formatEther(quote.data.ethIn) : undefined;
+    }
+    return amount || undefined;
+  }, [isTokenMode, quote.data?.ethIn, amount]);
+
   const insufficientAmount = useMemo(() => {
-    if (!ethIn || !balance.data) return false;
-    return Number(ethIn) > Number(formatEther(balance.data.value));
-  }, [ethIn, balance.data]);
+    if (!ethCost || !balance.data) return false;
+    return Number(ethCost) > Number(formatEther(balance.data.value));
+  }, [ethCost, balance.data]);
 
   const buyMutation = useMutation({
-    mutationFn: () => (token.graduated ? dexBuyToken(token, ethIn) : buyToken(token, ethIn)),
+    mutationFn: () => {
+      if (isTokenMode) {
+        return token.graduated
+          ? dexBuyTokenForTokens(token, amount)
+          : buyTokenForTokens(token, amount);
+      }
+      return token.graduated ? dexBuyToken(token, amount) : buyToken(token, amount);
+    },
     onSuccess: (hash) => {
       if (!hash) return;
-      setEthIn("");
-      toast.success("Buy transaction submitted");
-      queryClient.invalidateQueries({ queryKey: ["balance", account.address, chain.id] });
+      setAmount("");
+      toast.success("Buy confirmed");
+      void queryClient.invalidateQueries({ queryKey: ["balance", account.address, chain.id] });
     },
     onError: (error: { walk?: () => { shortMessage?: string; message?: string }; message?: string }) => {
       toast.error(error?.walk?.()?.shortMessage || error?.walk?.()?.message || error?.message || "Buy failed");
@@ -69,7 +99,15 @@ export function TokenBuyForm() {
     buyMutation.mutate();
   };
 
-  const expectedTokensOut = quote.data ? formatEther(quote.data.tokensOut) : undefined;
+  const onSwitchInput = () => {
+    setInputMode((mode) => (mode === "native" ? "token" : "native"));
+    setAmount("");
+  };
+
+  const expectedTokensOut =
+    !isTokenMode && quote.data?.tokensOut !== undefined
+      ? formatEther(quote.data.tokensOut)
+      : undefined;
 
   const submitLabel = account.address ? (
     buyMutation.isPending ? (
@@ -83,24 +121,32 @@ export function TokenBuyForm() {
 
   return (
     <TokenTradeFormShell
-      amount={ethIn}
-      onAmountChange={setEthIn}
-      assetSymbol={chain.nativeCurrency.symbol}
-      assetIconSrc="/images/brand/lcai.svg"
+      amount={amount}
+      onAmountChange={setAmount}
+      assetSymbol={isTokenMode ? token.symbol : nativeSymbol}
+      assetIconSrc={isTokenMode ? tokenIconSrc : "/images/brand/lcai.svg"}
       balance={{ isLoading: balance.isLoading, formatted: balance.data?.formatted }}
-      balanceSymbol={chain.nativeCurrency.symbol}
+      balanceSymbol={nativeSymbol}
       insufficientAmount={insufficientAmount}
-      amountPresets={[...AMOUNT_PRESETS]}
+      amountPresets={isTokenMode ? undefined : [...AMOUNT_PRESETS]}
+      onSwitchInput={onSwitchInput}
       onSubmit={onSubmit}
-      submitDisabled={buyMutation.isPending || insufficientAmount}
+      submitDisabled={buyMutation.isPending || insufficientAmount || !amount}
       submitLabel={submitLabel}
       quoteLoading={quote.isLoading}
       quoteText={
-        expectedTokensOut && (
-          <span>
-            You will receive: {formatNumber(expectedTokensOut, { maximumFractionDigits: 6 })} {token.symbol}
-          </span>
-        )
+        isTokenMode
+          ? ethCost && (
+              <span>
+                Cost: {formatNumber(ethCost, { maximumFractionDigits: 6 })} {nativeSymbol}
+              </span>
+            )
+          : expectedTokensOut && (
+              <span>
+                You will receive: {formatNumber(expectedTokensOut, { maximumFractionDigits: 6 })}{" "}
+                {token.symbol}
+              </span>
+            )
       }
     />
   );

@@ -59,6 +59,11 @@ export const launchpadAbi = [
   },
   {
     "inputs": [],
+    "name": "ExceedsForSaleSupply",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "ExpectedPause",
     "type": "error"
   },
@@ -1510,6 +1515,40 @@ export const launchpadAbi = [
       {
         "internalType": "uint256",
         "name": "refund",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "tokensOut",
+        "type": "uint256"
+      }
+    ],
+    "name": "quoteBuyForTokens",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "ethIn",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "ethInNet",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "fee",
         "type": "uint256"
       }
     ],
