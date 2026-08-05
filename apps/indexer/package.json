@@ -16,7 +16,7 @@
     "codegen": "ponder codegen",
     "typecheck": "ponder codegen && tsc -p tsconfig.json",
     "build": "echo 'ponder app — no build step' && exit 0",
-    "test": "echo 'no tests yet' && exit 0",
+    "test": "vitest run",
     "lint": "echo 'no lint' && exit 0"
   },
   "dependencies": {
@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
   }
 }

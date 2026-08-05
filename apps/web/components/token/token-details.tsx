@@ -8,6 +8,7 @@ import { Check, Copy, Globe, Send } from "lucide-react";
 import { formatEther } from "viem";
 
 import { TokenChart } from "@/components/charts/token-chart";
+import { CreatorFeesCard } from "@/components/token/creator-fees-card";
 import { TokenHolderTable } from "@/components/token/token-holder-table";
 import { TokenTradePanel } from "@/components/token/token-trade-panel";
 import { TokenTradeTable } from "@/components/token/token-trade-table";
@@ -405,6 +406,7 @@ export function TokenDetails() {
             </div>
             {token.metadata.description && <p className="pt-2 text-muted-foreground">{token.metadata.description}</p>}
           </div>
+          <CreatorFeesCard />
           {bondingCard}
           {holdersCard}
         </div>
@@ -463,6 +465,7 @@ export function TokenDetails() {
 
               <aside className="space-y-4 lg:sticky lg:top-20">
                 <TokenTradePanel />
+                <CreatorFeesCard />
                 {bondingCard}
                 {holdersCard}
               </aside>

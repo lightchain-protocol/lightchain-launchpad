@@ -2,21 +2,12 @@ import { parseEther } from "viem";
 import { erc20Abi } from "viem";
 
 import { Token } from "@/types";
-import { MAX_UINT256 } from "@/lib/utils";
+import { applySlippage, deadlineFromNow, MAX_UINT256 } from "@/lib/utils";
 import useUserStore from "@/store/user-store";
 import useWeb3Clients from "./useWeb3Clients";
 import useCurrentChain from "./useCurrentChain";
 import config from "@/config";
 import useContracts from "./useContracts";
-
-const MINUTE = 60;
-
-function applySlippage(amount: bigint, side: "min" | "max", slippageTolerance: number): bigint {
-  const bps = BigInt(Math.round(slippageTolerance * 100));
-  return side === "min"
-    ? (amount * (10_000n - bps)) / 10_000n
-    : (amount * (10_000n + bps)) / 10_000n;
-}
 
 export default function useDexSwapFunctions() {
   const chain = useCurrentChain();
@@ -69,7 +60,7 @@ export default function useDexSwapFunctions() {
 
     const { tokensOut } = await quoteDexBuy(token, ethIn);
     const minOut = applySlippage(tokensOut, "min", slippageTolerance);
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + (txDeadline * MINUTE));
+    const deadline = deadlineFromNow(txDeadline);
 
     const { request } = await uniswapV2RouterContract.simulate.swapExactETHForTokens(
       [minOut, [wethAddress, token.address], walletClient.account.address, deadline],
@@ -89,7 +80,7 @@ export default function useDexSwapFunctions() {
 
     const { ethIn, tokensOut: desired } = await quoteDexBuyForTokens(token, tokensOut);
     const maxEthIn = applySlippage(ethIn, "max", slippageTolerance);
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + (txDeadline * MINUTE));
+    const deadline = deadlineFromNow(txDeadline);
 
     const { request } = await uniswapV2RouterContract.simulate.swapETHForExactTokens(
       [desired, [wethAddress, token.address], walletClient.account.address, deadline],
@@ -123,7 +114,7 @@ export default function useDexSwapFunctions() {
 
     const { ethOut } = await quoteDexSell(token, tokenIn);
     const minOut = applySlippage(ethOut, "min", slippageTolerance);
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + (txDeadline * MINUTE));
+    const deadline = deadlineFromNow(txDeadline);
 
     const { request } = await uniswapV2RouterContract.simulate.swapExactTokensForETH(
       [amount, minOut, [token.address, wethAddress], walletClient.account.address, deadline],

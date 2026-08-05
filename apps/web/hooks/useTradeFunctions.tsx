@@ -3,7 +3,7 @@ import { erc20Abi } from "viem";
 
 import { Token } from "@/types";
 import { launchpadAbi } from "@lcai/abis";
-import { MAX_UINT256 } from "@/lib/utils";
+import { applySlippage, MAX_UINT256 } from "@/lib/utils";
 import useUserStore from "@/store/user-store";
 import useContracts from "./useContracts";
 import useWeb3Clients from "./useWeb3Clients";
@@ -95,13 +95,6 @@ export default function useTradeFunctions() {
     return undefined;
   };
 
-  const applySlippage = (amount: bigint, side: "min" | "max"): bigint => {
-    const bps = BigInt(Math.round(slippageTolerance * 100)); // tolerance in % → bps
-    return side === "min"
-      ? (amount * (10_000n - bps)) / 10_000n
-      : (amount * (10_000n + bps)) / 10_000n;
-  };
-
   /**
    * Buy tokens with `ethIn` native. The quote determines a slippage-adjusted
    * `minTokensOut`. Returns the tx hash; throws on simulate / write errors.
@@ -111,7 +104,7 @@ export default function useTradeFunctions() {
     if (token.graduated) throw new Error("token has graduated; trade on the DEX");
 
     const { tokensOut } = await quoteBuy(token, ethIn);
-    const minTokensOut = applySlippage(tokensOut, "min");
+    const minTokensOut = applySlippage(tokensOut, "min", slippageTolerance);
 
     const { request } = await launchpadContract.simulate.buy(
       [token.address, minTokensOut],
@@ -131,7 +124,7 @@ export default function useTradeFunctions() {
     if (token.graduated) throw new Error("token has graduated; trade on the DEX");
 
     const { ethIn, tokensOut: desired } = await quoteBuyForTokens(token, tokensOut);
-    const minTokensOut = applySlippage(desired, "min");
+    const minTokensOut = applySlippage(desired, "min", slippageTolerance);
 
     const { request } = await launchpadContract.simulate.buy(
       [token.address, minTokensOut],
@@ -168,7 +161,7 @@ export default function useTradeFunctions() {
     }
 
     const { ethOutNet } = await quoteSell(token, tokenIn);
-    const minEthOut = applySlippage(ethOutNet, "min");
+    const minEthOut = applySlippage(ethOutNet, "min", slippageTolerance);
 
     const { request } = await launchpadContract.simulate.sell(
       [token.address, tokenAmount, minEthOut],

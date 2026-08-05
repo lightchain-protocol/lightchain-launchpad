@@ -172,6 +172,11 @@ export const launchpadAbi = [
   },
   {
     "inputs": [],
+    "name": "PairPreSeeded",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "ReentrancyGuardReentrantCall",
     "type": "error"
   },
@@ -373,12 +378,6 @@ export const launchpadAbi = [
         "internalType": "uint16",
         "name": "gradCreatorShareBps",
         "type": "uint16"
-      },
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "treasury",
-        "type": "address"
       }
     ],
     "name": "FeeConfigUpdated",
@@ -612,6 +611,44 @@ export const launchpadAbi = [
       }
     ],
     "name": "Trade",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "treasury",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "delivered",
+        "type": "bool"
+      }
+    ],
+    "name": "TreasuryPayout",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "treasury",
+        "type": "address"
+      }
+    ],
+    "name": "TreasuryUpdated",
     "type": "event"
   },
   {
@@ -1129,6 +1166,16 @@ export const launchpadAbi = [
         "internalType": "address",
         "name": "token",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "minTokensToLp",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "minEthToLp",
+        "type": "uint256"
       }
     ],
     "name": "graduateByOwner",
@@ -1753,14 +1800,22 @@ export const launchpadAbi = [
         "internalType": "uint16",
         "name": "gradCreatorShareBps_",
         "type": "uint16"
-      },
+      }
+    ],
+    "name": "setFeeConfig",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
       {
         "internalType": "address",
         "name": "treasury_",
         "type": "address"
       }
     ],
-    "name": "setFeeConfig",
+    "name": "setTreasury",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1967,26 +2022,14 @@ export const launchpadAbi = [
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "to",
-        "type": "address"
-      }
-    ],
+    "inputs": [],
     "name": "withdrawCreationFees",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "to",
-        "type": "address"
-      }
-    ],
+    "inputs": [],
     "name": "withdrawProtocolFees",
     "outputs": [],
     "stateMutability": "nonpayable",

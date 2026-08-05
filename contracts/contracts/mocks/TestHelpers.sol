@@ -36,6 +36,31 @@ contract RevertingReceiver {
     }
 }
 
+/// @dev Mirrors the DAO Treasury's `receive()` (emits one event) so the fee-push
+///      gas budget is exercised against the shape of the real recipient.
+contract EventEmittingTreasury {
+    event FundsReceived(address indexed from, uint256 amount);
+
+    uint256 public totalReceived;
+
+    receive() external payable {
+        totalReceived += msg.value;
+        emit FundsReceived(msg.sender, msg.value);
+    }
+}
+
+/// @dev Burns gas in an unbounded loop on receive. Without a gas cap on the fee
+///      push this would consume 63/64 of the caller's gas and brick the launch.
+contract GasGriefingTreasury {
+    uint256 public sink;
+
+    receive() external payable {
+        while (true) {
+            sink++;
+        }
+    }
+}
+
 /// @dev V2 of the launchpad implementation, used to exercise the UUPS upgrade path.
 contract LaunchpadV2 is Launchpad {
     function version() external pure returns (uint256) {

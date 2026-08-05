@@ -78,6 +78,11 @@ contract MockUniswapV2Pair is ERC20 {
         emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
+    /// @dev Uniswap V2 `IUniswapV2Pair.sync()` — force reserves to match balances.
+    function sync() external {
+        _update(IERC20(token0).balanceOf(address(this)), IERC20(token1).balanceOf(address(this)));
+    }
+
     /// @dev test helper: seed the pool's accounted reserves to simulate a pre-seeded pair.
     function syncFromBalances() external {
         _update(IERC20(token0).balanceOf(address(this)), IERC20(token1).balanceOf(address(this)));
