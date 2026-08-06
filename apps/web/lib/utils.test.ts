@@ -8,6 +8,7 @@ import {
   DEADLINE_MAX,
   DEADLINE_MIN,
   deadlineFromNow,
+  formatNative,
   SLIPPAGE_DEFAULT,
   SLIPPAGE_MAX,
   SLIPPAGE_MIN,
@@ -111,5 +112,29 @@ describe("deadlineFromNow", () => {
 
   it("does not throw on a NaN deadline", () => {
     expect(() => deadlineFromNow(NaN)).not.toThrow();
+  });
+});
+
+describe("formatNative", () => {
+  it("appends the chain symbol", () => {
+    expect(formatNative(1234.5, "LCAI").endsWith(" LCAI")).toBe(true);
+  });
+
+  it("never renders a dollar sign", () => {
+    expect(formatNative(1234.5, "LCAI")).not.toContain("$");
+  });
+
+  it("renders zero rather than an empty string", () => {
+    expect(formatNative(0, "LCAI")).toBe("0 LCAI");
+  });
+
+  it("survives a missing amount", () => {
+    expect(formatNative(undefined, "LCAI")).toBe("0 LCAI");
+  });
+
+  it("passes Intl options through", () => {
+    const compact = formatNative(1_500_000, "LCAI", { notation: "compact" });
+    expect(compact).not.toBe(formatNative(1_500_000, "LCAI"));
+    expect(compact).not.toContain("$");
   });
 });

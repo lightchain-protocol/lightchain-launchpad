@@ -21,6 +21,21 @@ export const formatNumber = (
   });
 };
 
+/**
+ * Render a native-currency amount with the chain's symbol, e.g. "12,345 LCAI".
+ * Every money figure in this app is denominated in the chain's native currency:
+ * there is no fiat price source anywhere in this system, so nothing may be
+ * rendered behind a "$".
+ *
+ * Takes an amount already in native units — callers convert from wei with
+ * `weiToNative` first.
+ */
+export const formatNative = (
+  amount: number | string | undefined,
+  symbol: string,
+  options?: Intl.NumberFormatOptions
+) => `${formatNumber(amount, options)} ${symbol}`;
+
 export const formatBigNumber = (num: bigint | string | null | undefined, options?: Intl.NumberFormatOptions, decimals = 18) => {
   if (!num) return "0";
   return formatNumber(formatUnits(BigInt(num), decimals), options);

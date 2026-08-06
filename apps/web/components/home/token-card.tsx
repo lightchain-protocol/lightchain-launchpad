@@ -4,14 +4,14 @@ import { CheckCircle2 } from "lucide-react";
 
 import dayjs from "@/lib/dayjs";
 import { ipfsToHttp, weiToNative } from "@/lib/ipfs";
-import { formatNumber } from "@/lib/utils";
-import useStore from "@/store";
+import { formatNative } from "@/lib/utils";
+import useCurrentChain from "@/hooks/useCurrentChain";
 import type { TokenListItem } from "@/types";
 
 export function TokenCard({ item }: { item: TokenListItem }) {
-  const { nativePrice } = useStore();
+  const nativeSymbol = useCurrentChain().nativeCurrency.symbol;
   const bondingPct = useMemo(() => Math.min(100, item.progressBps / 100), [item.progressBps]);
-  const marketCapUSD = weiToNative(item.marketCap) * nativePrice;
+  const marketCapNative = weiToNative(item.marketCap);
   const imageUrl = ipfsToHttp(item.metadata.imageUrl);
   const tag = item.metadata.tags?.[0];
   const creatorShort = `${item.creator.slice(0, 6)}…${item.creator.slice(-4)}`;
@@ -57,7 +57,7 @@ export function TokenCard({ item }: { item: TokenListItem }) {
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="text-muted-foreground">Market Cap:</span>
               <span className="font-display font-semibold text-foreground">
-                ${formatNumber(marketCapUSD, { notation: "compact" })}
+                {formatNative(marketCapNative, nativeSymbol, { notation: "compact" })}
               </span>
             </div>
           </div>

@@ -9,12 +9,22 @@ import { Loader2 } from "lucide-react";
 import rankingQuery from "@/queries/rankingQuery";
 import dayjs from "@/lib/dayjs";
 import { ipfsToHttp, weiToNative } from "@/lib/ipfs";
-import { formatNumber } from "@/lib/utils";
-import useStore from "@/store";
+import { formatNative } from "@/lib/utils";
+import useCurrentChain from "@/hooks/useCurrentChain";
 import type { TokenListItem } from "@/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@lcai/ui/components/table";
 
-function RankingRow({ item, rank, marketCapUSD }: { item: TokenListItem; rank: number; marketCapUSD: number }) {
+function RankingRow({
+  item,
+  rank,
+  marketCapNative,
+  nativeSymbol,
+}: {
+  item: TokenListItem;
+  rank: number;
+  marketCapNative: number;
+  nativeSymbol: string;
+}) {
   // const bondingPct = Math.min(100, item.progressBps / 100);
   const imageUrl = ipfsToHttp(item.metadata.imageUrl);
 
@@ -33,13 +43,13 @@ function RankingRow({ item, rank, marketCapUSD }: { item: TokenListItem; rank: n
           </Link>
         </div>
       </TableCell>
-      <TableCell className="font-medium">${formatNumber(marketCapUSD)}</TableCell>
+      <TableCell className="font-medium">{formatNative(marketCapNative, nativeSymbol)}</TableCell>
     </TableRow>
   );
 }
 
 export function RankingTable() {
-  const { nativePrice } = useStore();
+  const nativeSymbol = useCurrentChain().nativeCurrency.symbol;
   const { data: tokens, isLoading, isError, dataUpdatedAt } = useQuery(rankingQuery());
 
   const lastUpdated = useMemo(
@@ -78,7 +88,8 @@ export function RankingTable() {
                     key={item.address}
                     item={item}
                     rank={index + 1}
-                    marketCapUSD={weiToNative(item.marketCap) * nativePrice}
+                    marketCapNative={weiToNative(item.marketCap)}
+                    nativeSymbol={nativeSymbol}
                   />
                 ))}
               </TableBody>
