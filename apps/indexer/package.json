@@ -16,8 +16,8 @@
     "codegen": "ponder codegen",
     "typecheck": "ponder codegen && tsc -p tsconfig.json",
     "build": "echo 'ponder app — no build step' && exit 0",
-    "test": "echo 'no tests yet' && exit 0",
-    "lint": "echo 'no lint' && exit 0"
+    "test": "vitest run",
+    "lint": "eslint --max-warnings 12"
   },
   "dependencies": {
     "@lcai/abis": "workspace:*",
@@ -27,7 +27,10 @@
     "viem": "^2.52.2"
   },
   "devDependencies": {
+    "@lcai/eslint-config": "workspace:*",
     "@types/node": "^22.10.0",
-    "typescript": "^5.7.3"
+    "eslint": "^9",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
   }
 }

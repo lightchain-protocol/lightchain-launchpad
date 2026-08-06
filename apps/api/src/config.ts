@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { z } from "zod";
 
+import { parseTrustProxy } from "./services/untrusted-input.js";
+
 const csv = (def: string) =>
   z.string().default(def).transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean));
 
@@ -12,6 +14,13 @@ const schema = z.object({
   PUBLIC_URL: z.string().url().default("http://localhost:3001"),
   CORS_ORIGIN: z.string().default("*"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
+
+  // Fastify `trustProxy`. Default false — correct when the API is exposed
+  // directly. `req.ip` is the rate-limit key, so trusting a client-supplied
+  // X-Forwarded-For means there is effectively no rate limit at all. Set this
+  // ONLY when a proxy you control always OVERWRITES that header.
+  //   false | true | <hop count, e.g. 1> | <IP/CIDR list, e.g. "10.0.0.0/8,127.0.0.1">
+  TRUST_PROXY: z.string().default("false").transform(parseTrustProxy),
 
   RPC_URL: z.string().url().default("http://127.0.0.1:8545"),
 

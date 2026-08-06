@@ -47,6 +47,7 @@ services:
       MAX_IMAGE_BYTES: ${MAX_IMAGE_BYTES:-4194304}
       RATE_LIMIT_GLOBAL_PER_MIN: ${RATE_LIMIT_GLOBAL_PER_MIN:-300}
       RATE_LIMIT_UPLOAD_PER_MIN: ${RATE_LIMIT_UPLOAD_PER_MIN:-10}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

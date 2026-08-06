@@ -2,21 +2,12 @@ import { parseEther } from "viem";
 import { erc20Abi } from "viem";
 
 import { Token } from "@/types";
-import { MAX_UINT256 } from "@/lib/utils";
+import { applySlippage, deadlineFromNow, MAX_UINT256 } from "@/lib/utils";
 import useUserStore from "@/store/user-store";
 import useWeb3Clients from "./useWeb3Clients";
 import useCurrentChain from "./useCurrentChain";
 import config from "@/config";
 import useContracts from "./useContracts";
-
-const MINUTE = 60;
-
-function applySlippage(amount: bigint, side: "min" | "max", slippageTolerance: number): bigint {
-  const bps = BigInt(Math.round(slippageTolerance * 100));
-  return side === "min"
-    ? (amount * (10_000n - bps)) / 10_000n
-    : (amount * (10_000n + bps)) / 10_000n;
-}
 
 export default function useDexSwapFunctions() {
   const chain = useCurrentChain();
@@ -25,6 +16,13 @@ export default function useDexSwapFunctions() {
   const { slippageTolerance, txDeadline } = useUserStore();
 
   const wethAddress = config.weth[chain.id];
+
+  /** See useTradeFunctions.requireWallet — an early return here was a silent no-op. */
+  const requireDex = () => {
+    if (!walletClient) throw new Error("Wallet not connected — reconnect and try again");
+    if (!wethAddress) throw new Error("WETH unavailable on this network");
+    return { wallet: walletClient, weth: wethAddress };
+  };
 
   const quoteDexBuy = async (
     token: Pick<Token, "address">,
@@ -64,44 +62,58 @@ export default function useDexSwapFunctions() {
     return { ethOut: amounts[amounts.length - 1]! };
   };
 
-  const dexBuyToken = async (token: Token, ethIn: string): Promise<`0x${string}` | undefined> => {
-    if (!walletClient || !wethAddress || !publicClient) return;
+  /** Buy with `ethIn` native; `shownTokensOut` is the quote the UI displayed. */
+  const dexBuyToken = async (
+    token: Token,
+    ethIn: string,
+    shownTokensOut: bigint,
+  ): Promise<`0x${string}`> => {
+    const { wallet, weth } = requireDex();
 
-    const { tokensOut } = await quoteDexBuy(token, ethIn);
-    const minOut = applySlippage(tokensOut, "min", slippageTolerance);
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + (txDeadline * MINUTE));
+    const minOut = applySlippage(shownTokensOut, "min", slippageTolerance);
+    const deadline = deadlineFromNow(txDeadline);
 
     const { request } = await uniswapV2RouterContract.simulate.swapExactETHForTokens(
-      [minOut, [wethAddress, token.address], walletClient.account.address, deadline],
-      { value: parseEther(ethIn), account: walletClient.account.address },
+      [minOut, [weth, token.address], wallet.account.address, deadline],
+      { value: parseEther(ethIn), account: wallet.account.address },
     );
-    const hash = await walletClient.writeContract(request);
+    const hash = await wallet.writeContract(request);
     await publicClient.waitForTransactionReceipt({ hash });
     return hash;
   };
 
-  /** Buy an exact token amount; unused ETH is refunded by the router. */
+  /**
+   * Buy an exact token amount. `shownEthIn` is the cost the UI displayed; the
+   * tolerance-capped maximum is sent as `msg.value` and the router refunds
+   * whatever it does not use, so the cap IS the guarantee.
+   */
   const dexBuyTokenForTokens = async (
     token: Token,
     tokensOut: string,
-  ): Promise<`0x${string}` | undefined> => {
-    if (!walletClient || !wethAddress || !publicClient) return;
+    shownEthIn: bigint,
+  ): Promise<`0x${string}`> => {
+    const { wallet, weth } = requireDex();
 
-    const { ethIn, tokensOut: desired } = await quoteDexBuyForTokens(token, tokensOut);
-    const maxEthIn = applySlippage(ethIn, "max", slippageTolerance);
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + (txDeadline * MINUTE));
+    const desired = parseEther(tokensOut);
+    const maxEthIn = applySlippage(shownEthIn, "max", slippageTolerance);
+    const deadline = deadlineFromNow(txDeadline);
 
     const { request } = await uniswapV2RouterContract.simulate.swapETHForExactTokens(
-      [desired, [wethAddress, token.address], walletClient.account.address, deadline],
-      { value: maxEthIn, account: walletClient.account.address },
+      [desired, [weth, token.address], wallet.account.address, deadline],
+      { value: maxEthIn, account: wallet.account.address },
     );
-    const hash = await walletClient.writeContract(request);
+    const hash = await wallet.writeContract(request);
     await publicClient.waitForTransactionReceipt({ hash });
     return hash;
   };
 
-  const dexSellToken = async (token: Token, tokenIn: string): Promise<`0x${string}` | undefined> => {
-    if (!walletClient || !wethAddress || !publicClient) return;
+  /** Sell `tokenIn` tokens; `shownEthOut` is the quote the UI displayed. */
+  const dexSellToken = async (
+    token: Token,
+    tokenIn: string,
+    shownEthOut: bigint,
+  ): Promise<`0x${string}`> => {
+    const { wallet, weth } = requireDex();
 
     const amount = parseEther(tokenIn);
 
@@ -109,10 +121,10 @@ export default function useDexSwapFunctions() {
       address: token.address,
       abi: erc20Abi,
       functionName: "allowance",
-      args: [walletClient.account.address, uniswapV2RouterContract.address],
+      args: [wallet.account.address, uniswapV2RouterContract.address],
     });
     if (allowance < amount) {
-      const approveHash = await walletClient.writeContract({
+      const approveHash = await wallet.writeContract({
         address: token.address,
         abi: erc20Abi,
         functionName: "approve",
@@ -121,15 +133,14 @@ export default function useDexSwapFunctions() {
       await publicClient.waitForTransactionReceipt({ hash: approveHash });
     }
 
-    const { ethOut } = await quoteDexSell(token, tokenIn);
-    const minOut = applySlippage(ethOut, "min", slippageTolerance);
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + (txDeadline * MINUTE));
+    const minOut = applySlippage(shownEthOut, "min", slippageTolerance);
+    const deadline = deadlineFromNow(txDeadline);
 
     const { request } = await uniswapV2RouterContract.simulate.swapExactTokensForETH(
-      [amount, minOut, [token.address, wethAddress], walletClient.account.address, deadline],
-      { account: walletClient.account.address },
+      [amount, minOut, [token.address, weth], wallet.account.address, deadline],
+      { account: wallet.account.address },
     );
-    const hash = await walletClient.writeContract(request);
+    const hash = await wallet.writeContract(request);
     await publicClient.waitForTransactionReceipt({ hash });
     return hash;
   };

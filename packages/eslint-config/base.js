@@ -27,6 +27,18 @@ export const config = [
     },
   },
   {
-    ignores: ["dist/**", ".next/**", "**/.turbo/**", "**/coverage/**"],
+    // Never lint vendored or generated trees. apps/web/public/ holds the
+    // vendored TradingView charting library (~17k warnings by itself, served
+    // verbatim as a static asset and never compiled); apps/indexer/generated/
+    // and .ponder/ are `ponder codegen` output.
+    ignores: [
+      "dist/**",
+      ".next/**",
+      "**/.turbo/**",
+      "**/coverage/**",
+      "**/public/**",
+      "**/generated/**",
+      "**/.ponder/**",
+    ],
   },
 ]

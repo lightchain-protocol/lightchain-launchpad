@@ -3,14 +3,14 @@ import { useMemo } from "react";
 import { Flame } from "lucide-react";
 
 import { ipfsToHttp, weiToNative } from "@/lib/ipfs";
-import { formatNumber } from "@/lib/utils";
-import useStore from "@/store";
+import { formatUsd } from "@/lib/utils";
+import useNativePrice from "@/hooks/useNativePrice";
 import type { TokenListItem } from "@/types";
 
 export function TrendingCard({ item, rank }: { item: TokenListItem; rank?: number }) {
-  const { nativePrice } = useStore();
+  const nativePrice = useNativePrice();
   const bondingPct = Math.min(100, item.progressBps / 100);
-  const marketCapUSD = weiToNative(item.marketCap) * nativePrice;
+  const marketCapUSD = formatUsd(weiToNative(item.marketCap), nativePrice, { notation: "compact" });
   const imageUrl = ipfsToHttp(item.metadata.imageUrl);
   const bannerUrl = ipfsToHttp(item.metadata.bannerUrl) ?? imageUrl;
 
@@ -53,7 +53,7 @@ export function TrendingCard({ item, rank }: { item: TokenListItem; rank?: numbe
 
           <div className="flex items-center justify-between text-sm">
             <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Market Cap</span>
-            <span className="font-display font-bold text-foreground">${formatNumber(marketCapUSD, { notation: "compact" })}</span>
+            <span className="font-display font-bold text-foreground">{marketCapUSD}</span>
           </div>
 
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">

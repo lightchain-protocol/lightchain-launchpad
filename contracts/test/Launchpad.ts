@@ -15,6 +15,9 @@ const gte = (a: bigint, b: bigint) => expect(a >= b, `expected ${a} >= ${b}`).to
 const lt = (a: bigint, b: bigint) => expect(a < b, `expected ${a} < ${b}`).to.equal(true);
 const lte = (a: bigint, b: bigint) => expect(a <= b, `expected ${a} <= ${b}`).to.equal(true);
 
+const MAX_UINT = 2n ** 256n - 1n;
+const farDeadline = () => BigInt(Math.floor(Date.now() / 1000) + 3600);
+
 // ---------------------------------------------------------------------------
 // fixtures & helpers
 // ---------------------------------------------------------------------------
@@ -54,6 +57,39 @@ async function launchToken(launchpad: any, signer: any, devBuy: bigint = 0n) {
 
 const bal = (publicClient: any, addr: Address): Promise<bigint> => publicClient.getBalance({ address: addr });
 
+// Move `amount` of `what` into the token/WETH pair and sync, the way a griefer
+// would: no LP is minted, so the donation is unrecoverable for the donor.
+async function donateToPair(
+  dex: any,
+  tokenAddr: Address,
+  what: "token" | "weth",
+  amount: bigint,
+  from: any,
+  token?: any,
+) {
+  const weth = getAddress(dex.weth.address);
+  let pair = (await dex.factory.read.getPair([tokenAddr, weth])) as Address;
+  if (pair === zeroAddress) {
+    await dex.factory.write.createPair([tokenAddr, weth]);
+    pair = (await dex.factory.read.getPair([tokenAddr, weth])) as Address;
+  }
+  if (what === "weth") {
+    await dex.weth.write.deposit({ value: amount, account: from.account });
+    await dex.weth.write.transfer([getAddress(pair), amount], { account: from.account });
+  } else {
+    await token.write.transfer([getAddress(pair), amount], { account: from.account });
+  }
+  await (await hre.viem.getContractAt("UniswapV2Pair", getAddress(pair))).write.sync();
+  return getAddress(pair);
+}
+
+/// ethForLp = raised - floor(raised * graduationFeeBps / 10000), matching CurveMath.feeOf
+async function ethForLpOf(launchpad: any, tokenAddr: Address): Promise<bigint> {
+  const raised: bigint = await launchpad.read.realEthRaisedOf([tokenAddr]);
+  const gradFee = (raised * BigInt(DEFAULTS.graduationFeeBps)) / 10_000n;
+  return raised - gradFee;
+}
+
 /// Sum-across-all-tokens invariant: launchpad's native balance must cover every
 /// non-graduated curve's backing + every curve's accrued creator fees + the
 /// global protocol fees + the accrued creation fees.
@@ -76,12 +112,12 @@ describe("Launchpad", () => {
   // -------------------------------------------------------------------------
   describe("deployment & config", () => {
     it("initializes with the supplied config and derives a consistent curve", async () => {
-      const { launchpad, deployer, mockDex } = await loadFixture(baseFixture);
+      const { launchpad, deployer, dex } = await loadFixture(baseFixture);
       expect(await launchpad.read.owner()).to.equal(getAddress(deployer.account.address));
       expect(await launchpad.read.creationFee()).to.equal(DEFAULTS.creationFee);
       expect(await launchpad.read.tradeFeeBps()).to.equal(DEFAULTS.tradeFeeBps);
       expect(await launchpad.read.graduationFeeBps()).to.equal(DEFAULTS.graduationFeeBps);
-      expect(await launchpad.read.dexRouter()).to.equal(getAddress(mockDex!.router.address));
+      expect(await launchpad.read.dexRouter()).to.equal(getAddress(dex!.router.address));
       const ve: bigint = await launchpad.read.virtualEthReserve();
       const vt: bigint = await launchpad.read.virtualTokenReserve();
       const m: bigint = await launchpad.read.maxSupplyForSale();
@@ -106,16 +142,31 @@ describe("Launchpad", () => {
       gt(await launchpad.read.virtualEthReserve(), 0n);
     });
 
-    it("enforces fee caps & a non-zero treasury", async () => {
-      const { launchpad, deployer } = await loadFixture(baseFixture);
-      const t = getAddress(deployer.account.address);
-      await expect(launchpad.write.setFeeConfig([0n, 1001, 100, 5000, 5000, t])).to.be.rejected; // tradeFee > 10%
-      await expect(launchpad.write.setFeeConfig([0n, 100, 2001, 5000, 5000, t])).to.be.rejected; // gradFee > 20%
-      await expect(launchpad.write.setFeeConfig([0n, 100, 100, 10001, 5000, t])).to.be.rejected; // creator share > 100%
-      await expect(launchpad.write.setFeeConfig([0n, 100, 100, 5000, 5000, zeroAddress])).to.be.rejected; // zero treasury
-      await launchpad.write.setFeeConfig([parseEther("0.02"), 200, 150, 4000, 6000, t]);
+    it("enforces fee caps", async () => {
+      const { launchpad } = await loadFixture(baseFixture);
+      await expect(launchpad.write.setFeeConfig([0n, 1001, 100, 5000, 5000])).to.be.rejected; // tradeFee > 10%
+      await expect(launchpad.write.setFeeConfig([0n, 100, 2001, 5000, 5000])).to.be.rejected; // gradFee > 20%
+      await expect(launchpad.write.setFeeConfig([0n, 100, 100, 10001, 5000])).to.be.rejected; // creator share > 100%
+      await launchpad.write.setFeeConfig([parseEther("0.02"), 200, 150, 4000, 6000]);
       expect(await launchpad.read.creationFee()).to.equal(parseEther("0.02"));
       expect(await launchpad.read.tradeFeeBps()).to.equal(200);
+    });
+
+    it("sets the treasury at deployment and rotates it via an owner-only setter", async () => {
+      const { launchpad, deployer, alice, carol } = await loadFixture(baseFixture);
+      // set at construction, from InitArgs.treasury (defaults to the owner)
+      expect(getAddress(await launchpad.read.treasury())).to.equal(getAddress(deployer.account.address));
+
+      await expect(launchpad.write.setTreasury([getAddress(carol.account.address)], { account: alice.account })).to.be
+        .rejected; // not owner
+      await expect(launchpad.write.setTreasury([zeroAddress])).to.be.rejected; // zero treasury
+
+      await launchpad.write.setTreasury([getAddress(carol.account.address)]);
+      expect(getAddress(await launchpad.read.treasury())).to.equal(getAddress(carol.account.address));
+
+      // rotating the treasury must not disturb the fee rates
+      expect(await launchpad.read.tradeFeeBps()).to.equal(DEFAULTS.tradeFeeBps);
+      expect(await launchpad.read.creationFee()).to.equal(DEFAULTS.creationFee);
     });
 
     it("gates owner-only functions", async () => {
@@ -123,9 +174,9 @@ describe("Launchpad", () => {
       await expect(launchpad.write.setAntiBot([0n, 0, 0], { account: alice.account })).to.be.rejected;
       await expect(launchpad.write.pause({ account: alice.account })).to.be.rejected;
       await expect(launchpad.write.setDexRouter([zeroAddress], { account: alice.account })).to.be.rejected;
-      await expect(
-        launchpad.write.withdrawCreationFees([getAddress(alice.account.address)], { account: alice.account })
-      ).to.be.rejected;
+      await expect(launchpad.write.withdrawCreationFees({ account: alice.account })).to.be.rejected;
+      await expect(launchpad.write.setTreasury([getAddress(alice.account.address)], { account: alice.account })).to.be
+        .rejected;
     });
 
     it("rejects a zero DEX router", async () => {
@@ -141,14 +192,15 @@ describe("Launchpad", () => {
       await expect(launchpad.write.createToken(["A", "A", ""], { value: 0n, account: alice.account })).to.be.rejected;
     });
 
-    it("launches a token, mints full supply to the launchpad, records mappings, accrues the fee", async () => {
+    it("launches a token, mints full supply to the launchpad, records mappings, pays the fee", async () => {
       const { launchpad, alice } = await loadFixture(baseFixture);
       const { token, tokenAddr } = await launchToken(launchpad, alice);
       expect(await token.read.totalSupply()).to.equal(DEFAULTS.totalSupply);
       expect(await token.read.balanceOf([getAddress(launchpad.address)])).to.equal(DEFAULTS.totalSupply);
       expect(getAddress(await launchpad.read.creatorOf([tokenAddr]))).to.equal(getAddress(alice.account.address));
       expect(await launchpad.read.totalTokens()).to.equal(1n);
-      expect(await launchpad.read.accruedCreationFees()).to.equal(DEFAULTS.creationFee);
+      // creation fee is pushed to the treasury, so nothing is left to pull
+      expect(await launchpad.read.accruedCreationFees()).to.equal(0n);
       expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(false);
       expect(await launchpad.read.fundingGoalOf([tokenAddr])).to.equal(DEFAULTS.fundingGoal);
     });
@@ -362,7 +414,7 @@ describe("Launchpad", () => {
       const pairAddr = (await launchpad.read.pairOf([tokenAddr])) as Address;
       expect(pairAddr).to.not.equal(zeroAddress);
       expect(await token.read.balanceOf([pairAddr])).to.equal(lpSupply);
-      const pair = await hre.viem.getContractAt("MockUniswapV2Pair", pairAddr);
+      const pair = await hre.viem.getContractAt("UniswapV2Pair", pairAddr);
       expect(await pair.read.balanceOf([getAddress(launchpad.address)])).to.equal(0n);
       gt(await pair.read.balanceOf([DEAD]), 0n); // LP burned
 
@@ -378,22 +430,237 @@ describe("Launchpad", () => {
     });
 
     it("graduates fine when the pool was pre-created (anti-brick)", async () => {
-      const { launchpad, token, tokenAddr, bob, mockDex } = await loadFixture(launchedFixture);
-      const weth = getAddress(mockDex!.weth.address);
-      await mockDex!.factory.write.createPair([getAddress(token.address), weth]);
-      const preCreated = (await mockDex!.factory.read.getPair([getAddress(token.address), weth])) as Address;
+      const { launchpad, token, tokenAddr, bob, dex } = await loadFixture(launchedFixture);
+      const weth = getAddress(dex!.weth.address);
+      await dex!.factory.write.createPair([getAddress(token.address), weth]);
+      const preCreated = (await dex!.factory.read.getPair([getAddress(token.address), weth])) as Address;
       expect(preCreated).to.not.equal(zeroAddress);
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
       expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
       expect(getAddress(await launchpad.read.pairOf([tokenAddr]))).to.equal(getAddress(preCreated));
     });
 
+    // Creating AND funding the pair is permissionless, and the token address is
+    // public from TokenLaunched onward. A pre-seeded pool lets an attacker
+    // choose the ratio the launchpad deposits at — so the normal path must
+    // refuse to deposit at all rather than donate the raise to it.
+    it("reverts graduation when the pair was pre-seeded with real reserves", async () => {
+      const { launchpad, token, tokenAddr, bob, carol, dex } = await loadFixture(launchedFixture);
+      const router = dex!.router;
+
+      // attacker buys a little on the curve just to obtain tokens...
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("1"), account: carol.account });
+      // ...then seeds the pair at an absurd price: 1000 wei of token vs 5 native
+      await token.write.approve([getAddress(router.address), MAX_UINT], { account: carol.account });
+      await router.write.addLiquidityETH(
+        [tokenAddr, 1000n, 0n, 0n, getAddress(carol.account.address), farDeadline()],
+        { value: parseEther("5"), account: carol.account },
+      );
+
+      // must be the deliberate error, not a division-by-zero panic
+      await expect(
+        launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account }),
+      ).to.be.rejectedWith(/PairPreSeeded/);
+      expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(false);
+    });
+
+    // A single wei of donated WETH leaves the token-side reserve at 0, which
+    // would make every UniswapV2 _addLiquidity divide by zero and strand the
+    // curve forever. It must self-heal with no owner action — the whole point is
+    // that a 1-wei grief cannot require a governance proposal to undo.
+    it("self-heals a native-only donated reserve with no owner action", async () => {
+      const { launchpad, token, tokenAddr, bob, carol, dex } = await loadFixture(launchedFixture);
+      const wethC = dex!.weth;
+      const weth = getAddress(wethC.address);
+
+      await dex!.factory.write.createPair([tokenAddr, weth]);
+      const pair = getAddress((await dex!.factory.read.getPair([tokenAddr, weth])) as Address);
+
+      await wethC.write.deposit({ value: 1n, account: carol.account });
+      await wethC.write.transfer([pair, 1n], { account: carol.account });
+      await (await hre.viem.getContractAt("UniswapV2Pair", pair)).write.sync();
+
+      // ordinary buy graduates straight through
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
+      expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
+
+      // the pool is real on both sides, and the full LP allocation reached it
+      const lpSupply: bigint = await launchpad.read.lpSupplyOf([tokenAddr]);
+      gte(await token.read.balanceOf([pair]), lpSupply);
+      gt(await wethC.read.balanceOf([pair]), 0n);
+      expect(await token.read.balanceOf([getAddress(launchpad.address)])).to.equal(0n);
+    });
+
+    // Both sides funded can't be neutralised losslessly — the launchpad has no
+    // spare native to rebalance with — so it stays a deliberate revert with a
+    // human decision behind it.
+    it("owner can graduate a token whose pair was pre-seeded on both sides", async () => {
+      const { launchpad, token, tokenAddr, deployer, bob, carol, dex } =
+        await loadFixture(launchedFixture);
+      const router = dex!.router;
+
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("1"), account: carol.account });
+      await token.write.approve([getAddress(router.address), MAX_UINT], { account: carol.account });
+      await router.write.addLiquidityETH(
+        [tokenAddr, 1000n, 0n, 0n, getAddress(carol.account.address), farDeadline()],
+        { value: parseEther("5"), account: carol.account },
+      );
+
+      // normal path refuses
+      await expect(
+        launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account }),
+      ).to.be.rejectedWith(/PairPreSeeded/);
+
+      // owner path recovers it, at bounds they chose
+      await launchpad.write.graduateByOwner([tokenAddr, 0n, 0n], { account: deployer.account });
+      expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
+      const pair = getAddress(await launchpad.read.pairOf([tokenAddr]));
+      gt(await token.read.balanceOf([pair]), 0n);
+      gt(await dex!.weth.read.balanceOf([pair]), 0n);
+    });
+
+    // A pair holding exactly one non-zero reserve makes UniswapV2Library.quote
+    // revert (`reserveA > 0 && reserveB > 0`), so the router cannot seed it at
+    // all — not even for the owner. Until someone mints LP there is no
+    // counterparty, so the launchpad seeds the pair itself at its own ratio.
+    it("self-heals a 1-wei token-only donated reserve with no owner action", async () => {
+      const { launchpad, token, tokenAddr, bob, carol, dex } = await loadFixture(launchedFixture);
+
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("1"), account: carol.account });
+      const pair = await donateToPair(dex!, tokenAddr, "token", 1n, carol, token);
+
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
+      expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
+
+      const lpSupply: bigint = await launchpad.read.lpSupplyOf([tokenAddr]);
+      const ethForLp = await ethForLpOf(launchpad, tokenAddr);
+      const pairC = await hre.viem.getContractAt("UniswapV2Pair", pair);
+
+      expect(await token.read.balanceOf([pair])).to.equal(lpSupply + 1n);
+      expect(await dex!.weth.read.balanceOf([pair])).to.equal(ethForLp);
+      expect(await pairC.read.balanceOf([getAddress(launchpad.address)])).to.equal(0n);
+      gt(await pairC.read.balanceOf([DEAD]), 1000n);
+      expect(await token.read.balanceOf([getAddress(launchpad.address)])).to.equal(0n);
+    });
+
+    it("self-heals a large token-only donated reserve with no owner action", async () => {
+      const { launchpad, token, tokenAddr, bob, carol, dex, publicClient } =
+        await loadFixture(launchedFixture);
+
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("1"), account: carol.account });
+      const donated: bigint = await token.read.balanceOf([getAddress(carol.account.address)]);
+      gt(donated, 0n);
+      const carolNativeBefore = await bal(publicClient, getAddress(carol.account.address));
+      const pair = await donateToPair(dex!, tokenAddr, "token", donated, carol, token);
+
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
+      expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
+
+      const lpSupply: bigint = await launchpad.read.lpSupplyOf([tokenAddr]);
+      const ethForLp = await ethForLpOf(launchpad, tokenAddr);
+      const pairC = await hre.viem.getContractAt("UniswapV2Pair", pair);
+
+      expect(await token.read.balanceOf([pair])).to.equal(lpSupply + donated);
+      expect(await dex!.weth.read.balanceOf([pair])).to.equal(ethForLp);
+
+      // the griefer gained nothing: no tokens, no LP, and no native back
+      expect(await token.read.balanceOf([getAddress(carol.account.address)])).to.equal(0n);
+      expect(await pairC.read.balanceOf([getAddress(carol.account.address)])).to.equal(0n);
+      lte(await bal(publicClient, getAddress(carol.account.address)), carolNativeBefore);
+    });
+
+    it("self-heals a native-only donated reserve far above the old dust cap", async () => {
+      const { launchpad, token, tokenAddr, bob, carol, dex } = await loadFixture(launchedFixture);
+
+      // the old DUST_DENOM cap was ethForLp / 10_000 (~0.003 native); this is ~1700x over it
+      const pair = await donateToPair(dex!, tokenAddr, "weth", parseEther("5"), carol);
+
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
+      expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
+
+      const lpSupply: bigint = await launchpad.read.lpSupplyOf([tokenAddr]);
+      const ethForLp = await ethForLpOf(launchpad, tokenAddr);
+      const pairC = await hre.viem.getContractAt("UniswapV2Pair", pair);
+
+      expect(await token.read.balanceOf([pair])).to.equal(lpSupply);
+      expect(await dex!.weth.read.balanceOf([pair])).to.equal(ethForLp + parseEther("5"));
+      expect(await pairC.read.balanceOf([getAddress(carol.account.address)])).to.equal(0n);
+      expect(await dex!.weth.read.balanceOf([getAddress(carol.account.address)])).to.equal(0n);
+      gt(await pairC.read.balanceOf([DEAD]), 1000n);
+    });
+
+    it("graduateByOwner rescues a one-sided pair and still deposits the full raise", async () => {
+      const { launchpad, token, tokenAddr, deployer, bob, carol, dex, publicClient } =
+        await loadFixture(launchedFixture);
+
+      // below the funding goal, so only the owner can graduate
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("5"), account: bob.account });
+      await donateToPair(dex!, tokenAddr, "weth", parseEther("60"), carol);
+
+      const lpSupply: bigint = await launchpad.read.lpSupplyOf([tokenAddr]);
+      const ethForLp = await ethForLpOf(launchpad, tokenAddr);
+
+      // succeeds even at the strictest minimums (documentary — the self-seed
+      // branch never consults them; the balance assertions are what pin it down)
+      await launchpad.write.graduateByOwner([tokenAddr, lpSupply, ethForLp], {
+        account: deployer.account,
+      });
+
+      expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
+      const pair = getAddress(await launchpad.read.pairOf([tokenAddr]));
+      expect(await token.read.balanceOf([pair])).to.equal(lpSupply);
+      expect(await dex!.weth.read.balanceOf([pair])).to.equal(ethForLp + parseEther("60"));
+      expect(await token.read.balanceOf([getAddress(launchpad.address)])).to.equal(0n);
+      await checkBackingInvariant(launchpad, [tokenAddr], publicClient);
+    });
+
+    // Pins the precondition the self-seed branch exists for: UniswapV2Library.quote
+    // requires BOTH reserves non-zero, so the router cannot seed a one-sided pair —
+    // not even for the owner. The reason string matters: a bare `.to.be.rejected`
+    // would also pass on an unrelated revert and would prove nothing.
+    it("UniswapV2Router02 refuses a one-sided reserve, which is what forces the self-seed", async () => {
+      {
+        const { launchpad, token, tokenAddr, carol, dex } = await loadFixture(launchedFixture);
+        await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("1"), account: carol.account });
+        await donateToPair(dex!, tokenAddr, "token", 1n, carol, token);
+        await expect(
+          dex!.router.write.addLiquidityETH(
+            [tokenAddr, 1000n, 0n, 0n, getAddress(carol.account.address), farDeadline()],
+            { value: parseEther("1"), account: carol.account },
+          ),
+        ).to.be.rejectedWith(/INSUFFICIENT_LIQUIDITY/);
+      }
+      {
+        const { tokenAddr, carol, dex } = await loadFixture(launchedFixture);
+        await donateToPair(dex!, tokenAddr, "weth", 1n, carol);
+        await expect(
+          dex!.router.write.addLiquidityETH(
+            [tokenAddr, 1000n, 0n, 0n, getAddress(carol.account.address), farDeadline()],
+            { value: parseEther("1"), account: carol.account },
+          ),
+        ).to.be.rejectedWith(/INSUFFICIENT_LIQUIDITY/);
+      }
+    });
+
+    it("deposits the entire LP supply and the entire post-fee raise into a fresh pair", async () => {
+      const { launchpad, token, tokenAddr, bob, dex } = await loadFixture(launchedFixture);
+      const lpSupply: bigint = await launchpad.read.lpSupplyOf([tokenAddr]);
+
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
+      expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
+
+      const pair = getAddress(await launchpad.read.pairOf([tokenAddr]));
+      // the whole intended LP allocation reached the pool — nothing skimmed, nothing burned
+      expect(await token.read.balanceOf([pair])).to.equal(lpSupply);
+      gt(await dex!.weth.read.balanceOf([pair]), 0n);
+    });
+
     it("supports exact-token buys via swapETHForExactTokens after graduation", async () => {
-      const { launchpad, token, tokenAddr, bob, carol, mockDex } = await loadFixture(launchedFixture);
+      const { launchpad, token, tokenAddr, bob, carol, dex } = await loadFixture(launchedFixture);
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
 
-      const router = mockDex!.router;
-      const weth = getAddress(mockDex!.weth.address);
+      const router = dex!.router;
+      const weth = getAddress(dex!.weth.address);
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
       const pathBuy = [weth, tokenAddr] as const;
       const want = parseEther("1000");
@@ -408,13 +675,13 @@ describe("Launchpad", () => {
       expect(await token.read.balanceOf([getAddress(carol.account.address)])).to.equal(before + want);
     });
 
-    it("supports post-graduation swaps via the mock Uniswap V2 router", async () => {
-      const { launchpad, token, tokenAddr, bob, carol, mockDex, publicClient } = await loadFixture(launchedFixture);
+    it("supports post-graduation swaps via the Uniswap V2 router", async () => {
+      const { launchpad, token, tokenAddr, bob, carol, dex, publicClient } = await loadFixture(launchedFixture);
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
       expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
 
-      const router = mockDex!.router;
-      const weth = getAddress(mockDex!.weth.address);
+      const router = dex!.router;
+      const weth = getAddress(dex!.weth.address);
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
       const pathBuy = [weth, tokenAddr] as const;
       const pathSell = [tokenAddr, weth] as const;
@@ -561,8 +828,8 @@ describe("Launchpad", () => {
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("1"), account: bob.account });
       const sold: bigint = await launchpad.read.tokensSoldOf([tokenAddr]);
       const lpSupply: bigint = await launchpad.read.lpSupplyOf([tokenAddr]);
-      await expect(launchpad.write.graduateByOwner([tokenAddr], { account: bob.account })).to.be.rejected; // not owner
-      await launchpad.write.graduateByOwner([tokenAddr], { account: deployer.account });
+      await expect(launchpad.write.graduateByOwner([tokenAddr, 0n, 0n], { account: bob.account })).to.be.rejected; // not owner
+      await launchpad.write.graduateByOwner([tokenAddr, 0n, 0n], { account: deployer.account });
       expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
       expect(await token.read.balanceOf([getAddress(launchpad.address)])).to.equal(0n);
       const pairAddr = (await launchpad.read.pairOf([tokenAddr])) as Address;
@@ -599,26 +866,105 @@ describe("Launchpad", () => {
         launchpad.write.claimCreatorFees([tokenAddr, getAddress(carol.account.address)], { account: alice.account })
       ).to.be.rejected; // nothing left
 
-      await expect(
-        launchpad.write.withdrawProtocolFees([getAddress(carol.account.address)], { account: bob.account })
-      ).to.be.rejected; // not owner
+      await expect(launchpad.write.withdrawProtocolFees({ account: bob.account })).to.be.rejected; // not owner
+      // the sweep always goes to the treasury — no caller-chosen destination
+      await launchpad.write.setTreasury([getAddress(carol.account.address)]);
       const treBefore = await bal(publicClient, getAddress(carol.account.address));
-      await launchpad.write.withdrawProtocolFees([getAddress(carol.account.address)], { account: deployer.account });
+      await launchpad.write.withdrawProtocolFees({ account: deployer.account });
       expect((await bal(publicClient, getAddress(carol.account.address))) - treBefore).to.equal(protocolFees);
 
       await checkBackingInvariant(launchpad, [tokenAddr], publicClient);
     });
 
-    it("a reverting treasury never bricks createToken; only the pull withdrawal to it fails", async () => {
+    it("sends the creation fee straight to the treasury", async () => {
+      // carol's address is needed to build the fixture, so read it up front
+      const treasuryAddr = getAddress((await hre.viem.getWalletClients())[3]!.account.address);
+      const { launchpad, alice, publicClient } = await loadFixture(
+        makeFixture({ treasury: treasuryAddr })
+      );
+      const before = await bal(publicClient, treasuryAddr);
+      await launchToken(launchpad, alice);
+      expect((await bal(publicClient, treasuryAddr)) - before).to.equal(DEFAULTS.creationFee);
+      expect(await launchpad.read.accruedCreationFees()).to.equal(0n); // nothing left to pull
+    });
+
+    it("graduation sweeps every protocol fee to the treasury, leaving only creator fees", async () => {
+      const treasuryAddr = getAddress((await hre.viem.getWalletClients())[3]!.account.address);
+      const { launchpad, tokenAddr, bob, publicClient } = await loadFixture(
+        launchedFixtureFor({ treasury: treasuryAddr })
+      );
+      // accrue some per-trade protocol fees first, so the sweep has more than
+      // just the graduation cut to move
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("2"), account: bob.account });
+      gt(await launchpad.read.protocolFees(), 0n);
+
+      const before = await bal(publicClient, treasuryAddr);
+      const owedBefore: bigint =
+        (await launchpad.read.protocolFees()) + (await launchpad.read.accruedCreationFees());
+
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
+      expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
+
+      const raised: bigint = await launchpad.read.realEthRaisedOf([tokenAddr]);
+      const gradFee = (raised * BigInt(DEFAULTS.graduationFeeBps)) / 10_000n;
+      const gradProtocolCut = gradFee - (gradFee * BigInt(DEFAULTS.gradCreatorShareBps)) / 10_000n;
+
+      // treasury received the pre-existing pot plus at least the graduation cut
+      const received = (await bal(publicClient, treasuryAddr)) - before;
+      gte(received, owedBefore + gradProtocolCut);
+
+      // nothing owed to the protocol is left behind — no manual withdrawal needed
+      expect(await launchpad.read.protocolFees()).to.equal(0n);
+      expect(await launchpad.read.accruedCreationFees()).to.equal(0n);
+
+      // and the launchpad now holds exactly the creator's unclaimed fees, nothing more
+      const creatorFees: bigint = await launchpad.read.creatorFeesOf([tokenAddr]);
+      expect(await bal(publicClient, getAddress(launchpad.address))).to.equal(creatorFees);
+    });
+
+    it("a reverting treasury never bricks createToken; the fee falls back to the pull balance", async () => {
       const reverter = await hre.viem.deployContract("RevertingReceiver", []);
       const { launchpad, alice, deployer } = await loadFixture(
         makeFixture({ treasury: getAddress(reverter.address) })
       );
-      await launchToken(launchpad, alice); // succeeds — creation fee is accrued, not pushed
+      await launchToken(launchpad, alice); // succeeds — push failed, fee accrued instead
       expect(await launchpad.read.accruedCreationFees()).to.equal(DEFAULTS.creationFee);
-      await expect(launchpad.write.withdrawCreationFees([getAddress(reverter.address)])).to.be.rejected; // push fails
-      await launchpad.write.withdrawCreationFees([getAddress(deployer.account.address)]); // re-pointed: works
+      await expect(launchpad.write.withdrawCreationFees()).to.be.rejected; // sweep to the reverter fails
+      await launchpad.write.setTreasury([getAddress(deployer.account.address)]); // rotate, then retry
+      await launchpad.write.withdrawCreationFees();
       expect(await launchpad.read.accruedCreationFees()).to.equal(0n);
+    });
+
+    it("pays a contract treasury that emits on receive (the DAO Treasury shape)", async () => {
+      const treasuryC = await hre.viem.deployContract("EventEmittingTreasury", []);
+      const { launchpad, alice, publicClient } = await loadFixture(
+        makeFixture({ treasury: getAddress(treasuryC.address) })
+      );
+      await launchToken(launchpad, alice);
+      // delivered, not escrowed to the pull balance
+      expect(await treasuryC.read.totalReceived()).to.equal(DEFAULTS.creationFee);
+      expect(await bal(publicClient, getAddress(treasuryC.address))).to.equal(DEFAULTS.creationFee);
+      expect(await launchpad.read.accruedCreationFees()).to.equal(0n);
+    });
+
+    it("a gas-griefing treasury cannot brick a launch", async () => {
+      const griefer = await hre.viem.deployContract("GasGriefingTreasury", []);
+      const { launchpad, alice } = await loadFixture(
+        makeFixture({ treasury: getAddress(griefer.address) })
+      );
+      await launchToken(launchpad, alice); // survives: the push is gas-capped, failure falls back
+      expect(await launchpad.read.accruedCreationFees()).to.equal(DEFAULTS.creationFee);
+    });
+
+    it("a reverting treasury never bricks graduation", async () => {
+      const reverter = await hre.viem.deployContract("RevertingReceiver", []);
+      const { launchpad, tokenAddr, bob } = await loadFixture(
+        launchedFixtureFor({ treasury: getAddress(reverter.address) })
+      );
+      const pfBefore: bigint = await launchpad.read.protocolFees();
+      await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
+      expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
+      gt(await launchpad.read.protocolFees(), pfBefore); // graduation fee fell back to pull
     });
   });
 

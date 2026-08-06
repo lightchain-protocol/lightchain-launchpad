@@ -38,6 +38,21 @@ const config = {
     [lcaiTestnet.id]: "0x89bFfFFb1Ca7821b7230a6a7479Fa93A7bDd7c16",
     [lcai.id]: ZERO,
   } as Record<number, `0x${string}`>,
+
+  /**
+   * LCAI/USD is read from **Ethereum mainnet**, not from the chain the app is
+   * connected to: LCAI is the native gas token here, so there is no pool on
+   * this chain to price it against. The Uniswap V3 LCAI/WETH pool gives ETH
+   * per LCAI and Chainlink's ETH/USD feed converts that to dollars — the same
+   * two contracts the LCAI DAO app reads. Not per-chain: these are the same
+   * addresses whether the user is on testnet, mainnet or local Anvil.
+   */
+  priceFeed: {
+    pool: "0x0D047a370611437a1B8e6c2a95eA36f69fdDa3Be",
+    lcai: "0x9ca8530ca349c966fe9ef903df17a75b8a778927",
+    weth: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    ethUsdAggregator: "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
+  } as Record<"pool" | "lcai" | "weth" | "ethUsdAggregator", `0x${string}`>,
 };
 
 export default config;

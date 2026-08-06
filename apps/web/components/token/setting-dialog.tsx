@@ -12,6 +12,7 @@ import { Input } from "@lcai/ui/components/input";
 import { Label } from "@lcai/ui/components/label";
 import { cn } from "@lcai/ui/lib/utils";
 
+import { DEADLINE_MAX, DEADLINE_MIN, SLIPPAGE_MAX, SLIPPAGE_MIN } from "@/lib/utils";
 import useUserStore from "@/store/user-store";
 import { SettingsIcon, XIcon } from "lucide-react";
 import type { JSX } from "react";
@@ -24,7 +25,7 @@ type Props = {
 };
 
 export function SettingDialog({ trigger, className }: Props) {
-  const { slippageTolerance, txDeadline } = useUserStore();
+  const { slippageTolerance, txDeadline, setSlippageTolerance, setTxDeadline } = useUserStore();
 
   return (
     <Dialog>
@@ -58,7 +59,7 @@ export function SettingDialog({ trigger, className }: Props) {
                 <Button
                   key={key}
                   variant={"secondary"}
-                  onClick={() => useUserStore.setState({ slippageTolerance: option })}
+                  onClick={() => setSlippageTolerance(option)}
                 >
                   {option}%
                 </Button>
@@ -68,11 +69,9 @@ export function SettingDialog({ trigger, className }: Props) {
                   value={slippageTolerance}
                   type="number"
                   step={0.1}
-                  onChange={(e) =>
-                    useUserStore.setState({
-                      slippageTolerance: Number(e.target.value),
-                    })
-                  }
+                  min={SLIPPAGE_MIN}
+                  max={SLIPPAGE_MAX}
+                  onChange={(e) => setSlippageTolerance(Number(e.target.value))}
                 />
                 %
               </div>
@@ -84,9 +83,10 @@ export function SettingDialog({ trigger, className }: Props) {
             <Input
               type="number"
               className=""
-              min={2}
+              min={DEADLINE_MIN}
+              max={DEADLINE_MAX}
               value={txDeadline}
-              onChange={(e) => useUserStore.setState({ txDeadline: Number(e.target.value) })}
+              onChange={(e) => setTxDeadline(Number(e.target.value))}
             />
           </div>
         </div>

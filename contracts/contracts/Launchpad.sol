@@ -16,6 +16,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
+import {IWETH} from "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
 
 import {Token} from "./Token.sol";
 import {CurveMath} from "./lib/CurveMath.sol";
@@ -54,6 +55,10 @@ contract Launchpad is
     uint16 public constant MAX_LP_BPS = 5_000; // 50%
     uint256 public constant MIN_FUNDING_GOAL = 1e15; // 0.001 native
 
+    /// @dev Gas forwarded to the treasury on a fee push. Enough for a multisig
+    ///      receive, bounded so a hostile treasury can't burn the payer's gas.
+    uint256 private constant TREASURY_GAS_LIMIT = 50_000;
+
     // ================================================================
     //  Storage — global config (snapshotted into Curve at createToken)
     // ================================================================
@@ -83,11 +88,12 @@ contract Launchpad is
     // ----- launch registry -----
     address[] public allTokens;
     mapping(address token => address creator) public creatorOf;
-    uint256 public accruedCreationFees; // pull-withdrawn by the owner to the treasury
+    uint256 public accruedCreationFees; // creation fees whose treasury push failed
 
     // ----- protocol-wide accounting -----
-    /// @notice Protocol's share of every trade fee + graduation fee + any router-refund
-    ///         dust, pooled across all tokens. Pull-withdrawn by the owner.
+    /// @notice Protocol's share of every trade fee + any router-refund dust, pooled
+    ///         across all tokens. Swept to the treasury automatically on the next
+    ///         graduation; `withdrawProtocolFees` is the manual backstop.
     uint256 public protocolFees;
 
     // ================================================================
@@ -165,9 +171,13 @@ contract Launchpad is
         uint16 tradeFeeBps,
         uint16 graduationFeeBps,
         uint16 creatorFeeShareBps,
-        uint16 gradCreatorShareBps,
-        address treasury
+        uint16 gradCreatorShareBps
     );
+    event TreasuryUpdated(address treasury);
+
+    /// @param delivered false when the push failed and the amount fell back to
+    ///        the owner-withdrawable pull balance instead.
+    event TreasuryPayout(address indexed treasury, uint256 amount, bool delivered);
     event CurveParamsUpdated(
         uint256 totalSupply,
         uint16 lpBps,
@@ -201,6 +211,7 @@ contract Launchpad is
     error CurveSoldOut();
     error ExceedsForSaleSupply();
     error NothingToClaim();
+    error PairPreSeeded();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -235,8 +246,9 @@ contract Launchpad is
         __Pausable_init();
         __ReentrancyGuard_init();
 
+        _setTreasury(a.treasury);
         _setFeeConfig(
-            a.creationFee, a.tradeFeeBps, a.graduationFeeBps, a.creatorFeeShareBps, a.gradCreatorShareBps, a.treasury
+            a.creationFee, a.tradeFeeBps, a.graduationFeeBps, a.creatorFeeShareBps, a.gradCreatorShareBps
         );
         _setCurveParams(a.totalSupply, a.lpBps, a.fundingGoal, a.virtualTokenReserve);
         _setAntiBot(a.maxBuyPerTx, a.maxWalletBps, a.tradeCooldown);
@@ -280,9 +292,12 @@ contract Launchpad is
 
         creatorOf[tokenAddr] = msg.sender;
         allTokens.push(tokenAddr);
-        accruedCreationFees += creationFee;
 
         emit TokenLaunched(tokenAddr, msg.sender, name, symbol, metadataURI, devBuyEth);
+
+        // Push the creation fee; on failure it stays pull-withdrawable so a
+        // hostile or non-payable treasury can never block a launch.
+        if (!_payTreasury(creationFee)) accruedCreationFees += creationFee;
 
         if (devBuyEth > 0) {
             _buy(tokenAddr, msg.sender, msg.sender, devBuyEth, 0);
@@ -394,22 +409,30 @@ contract Launchpad is
 
         emit Trade(token, to, true, ethInNet, tokensOut, fee, _currentPriceX18(c), c.realEthRaised, c.tokensSold);
 
-        if (willGraduate) _graduate(token);
+        if (willGraduate) _graduate(token, false, 0, 0);
     }
 
     // ================================================================
     //  Graduation
     // ================================================================
-    /// @notice Owner escape hatch: graduate a token's curve even if the threshold
-    ///         isn't reached (e.g. to rescue a curve wedged by a misconfigured DEX).
-    function graduateByOwner(address token) external onlyOwner nonReentrant {
+    /// @notice Owner escape hatch: graduate even if the threshold isn't reached
+    ///         (wedged DEX), or when the pair was pre-seeded and `buy` refuses it.
+    /// @param minTokensToLp Minimum token amount the owner accepts depositing.
+    /// @param minEthToLp    Minimum native amount the owner accepts depositing.
+    function graduateByOwner(address token, uint256 minTokensToLp, uint256 minEthToLp)
+        external
+        onlyOwner
+        nonReentrant
+    {
         Curve storage c = _curves[token];
         if (c.fundingGoal == 0) revert UnknownToken();
         if (c.graduated) revert AlreadyGraduated();
-        _graduate(token);
+        _graduate(token, true, minTokensToLp, minEthToLp);
     }
 
-    function _graduate(address token) internal {
+    function _graduate(address token, bool ownerOverride, uint256 minTokensToLp, uint256 minEthToLp)
+        internal
+    {
         Curve storage c = _curves[token];
         c.graduated = true;
 
@@ -417,7 +440,7 @@ contract Launchpad is
         uint256 gradFee = CurveMath.feeOf(raised, c.graduationFeeBps);
         uint256 gradCreatorCut = CurveMath.share(gradFee, c.gradCreatorShareBps);
         c.creatorFees = uint128(uint256(c.creatorFees) + gradCreatorCut);
-        protocolFees += gradFee - gradCreatorCut;
+        uint256 gradProtocolCut = gradFee - gradCreatorCut;
         uint256 ethForLp = raised - gradFee;
 
         IUniswapV2Router02 router = IUniswapV2Router02(dexRouter);
@@ -428,17 +451,37 @@ contract Launchpad is
         if (_pair == address(0)) _pair = dexFactory.createPair(token, weth);
         c.pair = _pair;
 
+        uint256 _lpSupply = c.lpSupply;
+
+        // Funding the pair is permissionless. Until someone mints LP there is no
+        // counterparty: whatever sits in the pair is a donation nobody can pull
+        // back, so seed the pair ourselves at our own ratio and take 100% of the
+        // LP (burned below). Once LP exists both reserves are non-zero — V2 can't
+        // drain a side while MINIMUM_LIQUIDITY is locked — so the router's quote()
+        // works there, but the ratio is the incumbent's: owner decision only.
         bool degraded;
         {
             (uint112 r0, uint112 r1,) = IUniswapV2Pair(_pair).getReserves();
-            degraded = (r0 != 0 || r1 != 0); // someone pre-seeded the pool
+            degraded = (r0 != 0 || r1 != 0);
         }
+        bool selfSeed = IUniswapV2Pair(_pair).totalSupply() == 0;
+        if (!selfSeed && !ownerOverride) revert PairPreSeeded();
 
-        uint256 _lpSupply = c.lpSupply;
-        IERC20(token).forceApprove(address(router), _lpSupply);
-        (uint256 usedToken, uint256 usedEth,) =
-            router.addLiquidityETH{value: ethForLp}(token, _lpSupply, 0, 0, address(this), block.timestamp);
-        IERC20(token).forceApprove(address(router), 0);
+        uint256 usedToken;
+        uint256 usedEth;
+        if (selfSeed) {
+            IERC20(token).safeTransfer(_pair, _lpSupply);
+            IWETH(weth).deposit{value: ethForLp}();
+            IERC20(weth).safeTransfer(_pair, ethForLp);
+            IUniswapV2Pair(_pair).mint(address(this));
+            (usedToken, usedEth) = (_lpSupply, ethForLp);
+        } else {
+            IERC20(token).forceApprove(address(router), _lpSupply);
+            (usedToken, usedEth,) = router.addLiquidityETH{value: ethForLp}(
+                token, _lpSupply, minTokensToLp, minEthToLp, address(this), block.timestamp
+            );
+            IERC20(token).forceApprove(address(router), 0);
+        }
 
         // burn the LP we received
         uint256 lpBal = IERC20(_pair).balanceOf(address(this));
@@ -453,6 +496,20 @@ contract Launchpad is
         if (leftover > 0) Token(token).burn(leftover);
 
         emit Graduated(token, _pair, usedEth, usedToken, leftover, degraded);
+
+        // Sweep everything owed to the treasury in one call: graduation fee,
+        // accrued trade fees, router dust, and any earlier push that fell back.
+        // Same gas as sending the graduation fee alone, so no manual withdrawal
+        // is ever needed. Zeroed before the call (CEI), restored in full on
+        // failure so a bad treasury defers the payout instead of losing it.
+        uint256 protocolOwed = protocolFees + gradProtocolCut;
+        uint256 creationOwed = accruedCreationFees;
+        protocolFees = 0;
+        accruedCreationFees = 0;
+        if (!_payTreasury(protocolOwed + creationOwed)) {
+            protocolFees = protocolOwed;
+            accruedCreationFees = creationOwed;
+        }
     }
 
     // ================================================================
@@ -469,8 +526,13 @@ contract Launchpad is
         emit CreatorFeesClaimed(token, to, amount);
     }
 
-    function withdrawProtocolFees(address to) external onlyOwner nonReentrant {
-        if (to == address(0)) revert InvalidParam();
+    /// @notice Manual backstop: every graduation already sweeps this to the
+    ///         treasury automatically. Only needed when no token has graduated
+    ///         in a while, or to retry after a failed push.
+    /// @dev Uses `sendValue`, so a treasury that can't receive reverts the sweep
+    ///      and the balance stays put — rotate via `setTreasury` and retry.
+    function withdrawProtocolFees() external onlyOwner nonReentrant {
+        address to = treasury;
         uint256 amount = protocolFees;
         if (amount == 0) revert NothingToWithdraw();
         protocolFees = 0;
@@ -478,8 +540,10 @@ contract Launchpad is
         emit ProtocolFeesWithdrawn(to, amount);
     }
 
-    function withdrawCreationFees(address to) external onlyOwner nonReentrant {
-        if (to == address(0)) revert InvalidParam();
+    /// @notice Manual backstop for creation fees whose push failed. Graduations
+    ///         retry these automatically too.
+    function withdrawCreationFees() external onlyOwner nonReentrant {
+        address to = treasury;
         uint256 amount = accruedCreationFees;
         if (amount == 0) revert NothingToWithdraw();
         accruedCreationFees = 0;
@@ -495,10 +559,15 @@ contract Launchpad is
         uint16 tradeFeeBps_,
         uint16 graduationFeeBps_,
         uint16 creatorFeeShareBps_,
-        uint16 gradCreatorShareBps_,
-        address treasury_
+        uint16 gradCreatorShareBps_
     ) external onlyOwner {
-        _setFeeConfig(creationFee_, tradeFeeBps_, graduationFeeBps_, creatorFeeShareBps_, gradCreatorShareBps_, treasury_);
+        _setFeeConfig(creationFee_, tradeFeeBps_, graduationFeeBps_, creatorFeeShareBps_, gradCreatorShareBps_);
+    }
+
+    /// @notice Update the fee recipient. Independent of `setFeeConfig` so it can
+    ///         be rotated without touching fee rates.
+    function setTreasury(address treasury_) external onlyOwner {
+        _setTreasury(treasury_);
     }
 
     function setCurveParams(uint256 totalSupply_, uint16 lpBps_, uint256 fundingGoal_, uint256 virtualTokenReserve_)
@@ -738,10 +807,8 @@ contract Launchpad is
         uint16 tradeFeeBps_,
         uint16 graduationFeeBps_,
         uint16 creatorFeeShareBps_,
-        uint16 gradCreatorShareBps_,
-        address treasury_
+        uint16 gradCreatorShareBps_
     ) internal {
-        if (treasury_ == address(0)) revert InvalidParam();
         if (tradeFeeBps_ > MAX_TRADE_FEE_BPS) revert InvalidParam();
         if (graduationFeeBps_ > MAX_GRADUATION_FEE_BPS) revert InvalidParam();
         if (creatorFeeShareBps_ > BPS || gradCreatorShareBps_ > BPS) revert InvalidParam();
@@ -750,8 +817,24 @@ contract Launchpad is
         graduationFeeBps = graduationFeeBps_;
         creatorFeeShareBps = creatorFeeShareBps_;
         gradCreatorShareBps = gradCreatorShareBps_;
+        emit FeeConfigUpdated(creationFee_, tradeFeeBps_, graduationFeeBps_, creatorFeeShareBps_, gradCreatorShareBps_);
+    }
+
+    function _setTreasury(address treasury_) internal {
+        if (treasury_ == address(0)) revert InvalidParam();
         treasury = treasury_;
-        emit FeeConfigUpdated(creationFee_, tradeFeeBps_, graduationFeeBps_, creatorFeeShareBps_, gradCreatorShareBps_, treasury_);
+        emit TreasuryUpdated(treasury_);
+    }
+
+    /// @dev Push `amount` to the treasury. Bounded gas so a griefing treasury
+    ///      can't burn the caller's; failure is returned, never thrown — the
+    ///      caller falls back to the pull balance so a hostile or contract
+    ///      treasury can't brick createToken or graduation.
+    function _payTreasury(uint256 amount) internal returns (bool delivered) {
+        if (amount == 0) return true;
+        address t = treasury;
+        (delivered,) = payable(t).call{value: amount, gas: TREASURY_GAS_LIMIT}("");
+        emit TreasuryPayout(t, amount, delivered);
     }
 
     function _setCurveParams(uint256 totalSupply_, uint16 lpBps_, uint256 fundingGoal_, uint256 virtualTokenReserve_)

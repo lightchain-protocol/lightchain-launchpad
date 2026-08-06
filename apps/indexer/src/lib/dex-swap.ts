@@ -4,16 +4,17 @@ import { launchpadAbi, uniswapV2PairAbi, uniswapV2Router02Abi } from "@lcai/abis
 import { getAddress } from "viem";
 import type { Context } from "ponder:registry";
 
-const WAD = 10n ** 18n;
+// The pure decoding lives in a sibling with no `ponder:*` imports so it can be
+// unit-tested; re-exported here so existing import sites are unchanged.
+export {
+  parseDexSwapAmounts,
+  type DexSwapAmounts,
+  type PairMeta,
+} from "./dex-swap-math.js";
+import type { PairMeta } from "./dex-swap-math.js";
 
 const launchpadAddress = (process.env.LAUNCHPAD_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as `0x${string}`;
-
-export type PairMeta = {
-  token: `0x${string}`;
-  weth: `0x${string}`;
-  sourceIsToken0: boolean;
-};
 
 /** One-time on-chain reads at graduation; persisted to `graduations` table. */
 export async function resolveGraduationPairMeta(
@@ -98,35 +99,3 @@ export async function getPairMeta(
   };
 }
 
-export interface DexSwapAmounts {
-  isBuy: boolean;
-  ethAmount: bigint;
-  tokenAmount: bigint;
-  priceX18: bigint;
-}
-
-export function parseDexSwapAmounts(
-  meta: PairMeta,
-  amount0In: bigint,
-  amount1In: bigint,
-  amount0Out: bigint,
-  amount1Out: bigint,
-): DexSwapAmounts | null {
-  const { sourceIsToken0 } = meta;
-
-  const sourceIn = sourceIsToken0 ? amount0In : amount1In;
-  const sourceOut = sourceIsToken0 ? amount0Out : amount1Out;
-  const wethIn = sourceIsToken0 ? amount1In : amount0In;
-  const wethOut = sourceIsToken0 ? amount1Out : amount0Out;
-
-  const isBuy = sourceOut > 0n && wethIn > 0n;
-  const isSell = sourceIn > 0n && wethOut > 0n;
-  if (!isBuy && !isSell) return null;
-
-  const ethAmount = isBuy ? wethIn : wethOut;
-  const tokenAmount = isBuy ? sourceOut : sourceIn;
-  if (tokenAmount === 0n) return null;
-
-  const priceX18 = (ethAmount * WAD) / tokenAmount;
-  return { isBuy, ethAmount, tokenAmount, priceX18 };
-}

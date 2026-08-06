@@ -136,12 +136,11 @@ export function TokenTradeFormShell({
         {submitLabel}
       </BrandButton>
 
-      {quoteLoading ||
-        (quoteText && (
-          <p className={cn("text-center text-xs text-muted-foreground")}>
-            {quoteLoading ? <Loader2 className="mx-auto size-4 animate-spin" /> : quoteText}
-          </p>
-        ))}
+      {(quoteLoading || quoteText) && (
+        <div className={cn("space-y-1 text-center text-xs text-muted-foreground")}>
+          {quoteLoading ? <Loader2 className="mx-auto size-4 animate-spin" /> : quoteText}
+        </div>
+      )}
     </form>
   );
 }

@@ -1,7 +1,9 @@
-import { sql } from "ponder";
 import { candle as candles } from "ponder:schema";
 
-export const CANDLE_INTERVALS = [60, 300, 900, 3600, 14400, 86400] as const;
+// The bucket + merge math lives in a sibling with no `ponder:*` imports so it
+// can be unit-tested; re-exported here so existing import sites are unchanged.
+export { CANDLE_INTERVALS } from "./candles-math.js";
+import { bucketStartFor, CANDLE_INTERVALS, mergeCandle, newCandle } from "./candles-math.js";
 
 type Db = {
   insert: (table: typeof candles) => {
@@ -41,27 +43,14 @@ export async function upsertCandles(
   ts: bigint,
 ): Promise<void> {
   for (const interval of CANDLE_INTERVALS) {
-    const iv = BigInt(interval);
-    const bucketStart = (ts / iv) * iv;
     await db
       .insert(candles)
       .values({
         token,
         interval,
-        bucketStart,
-        open: priceX18,
-        high: priceX18,
-        low: priceX18,
-        close: priceX18,
-        volume: ethAmount,
-        trades: 1,
+        bucketStart: bucketStartFor(ts, interval),
+        ...newCandle(priceX18, ethAmount),
       })
-      .onConflictDoUpdate((row) => ({
-        high: row.high > priceX18 ? row.high : priceX18,
-        low: row.low < priceX18 ? row.low : priceX18,
-        close: priceX18,
-        volume: row.volume + ethAmount,
-        trades: row.trades + 1,
-      }));
+      .onConflictDoUpdate((row) => mergeCandle(row, priceX18, ethAmount));
   }
 }

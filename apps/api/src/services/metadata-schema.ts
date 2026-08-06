@@ -43,7 +43,7 @@ export const tokenMetadataJsonSchema = z.object({
   website: httpsUrl,
   twitter: httpsUrl,
   telegram: httpsUrl,
-  discord: z.string().trim().max(300).optional(),
+  discord: httpsUrl,
   tags: tags,
 });
 export type TokenMetadataJson = z.infer<typeof tokenMetadataJsonSchema>;

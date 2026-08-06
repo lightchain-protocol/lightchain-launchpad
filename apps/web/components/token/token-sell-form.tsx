@@ -7,7 +7,7 @@ import { Loader2 } from "lucide-react";
 import { hashFn } from "wagmi/query";
 import { useConnection } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
-import { formatEther } from "viem";
+import { formatEther, parseEther } from "viem";
 import { toast } from "sonner";
 
 import { TokenTradeFormShell } from "@/components/token/token-trade-form-shell";
@@ -18,7 +18,8 @@ import useTradeFunctions from "@/hooks/useTradeFunctions";
 import { useDebouncedValue } from "@/hooks/useDebounce";
 import { ipfsToHttp } from "@/lib/ipfs";
 import tokenQuery from "@/queries/tokenQuery";
-import { formatNumber } from "@/lib/utils";
+import { applySlippage, formatNumber, isQuoteStale, priceImpactBps, QUOTE_REFRESH_MS } from "@/lib/utils";
+import useUserStore from "@/store/user-store";
 
 const PERCENTAGE_PRESETS = [25, 50, 75, 100] as const;
 
@@ -40,15 +41,38 @@ export function TokenSellForm() {
     enabled: !!token?.address && !!account.address,
   });
 
+  const { slippageTolerance } = useUserStore();
+
   const quote = useQuery({
     queryKey: ["quoteSell", token.address, debouncedTokenIn, token.graduated],
     queryKeyHashFn: hashFn,
-    queryFn: () =>
-      token.graduated
-        ? quoteDexSell(token, debouncedTokenIn).then((r) => ({ ethOutNet: r.ethOut }))
-        : quoteSell(token, debouncedTokenIn),
+    queryFn: async (): Promise<{ ethOutNet: bigint; ethGross: bigint }> => {
+      if (token.graduated) {
+        const r = await quoteDexSell(token, debouncedTokenIn);
+        return { ethOutNet: r.ethOut, ethGross: r.ethOut };
+      }
+      const r = await quoteSell(token, debouncedTokenIn);
+      return { ethOutNet: r.ethOutNet, ethGross: r.ethOutNet + r.fee };
+    },
     enabled: !!token.address && !!debouncedTokenIn,
+    staleTime: 0,
+    refetchInterval: QUOTE_REFRESH_MS,
   });
+
+  const quoteReady = !!quote.data && debouncedTokenIn === tokenIn;
+
+  const minReceived = useMemo(
+    () => (quote.data ? applySlippage(quote.data.ethOutNet, "min", slippageTolerance) : undefined),
+    [quote.data, slippageTolerance]
+  );
+
+  const impactBps = useMemo(
+    () =>
+      quote.data && debouncedTokenIn
+        ? priceImpactBps(quote.data.ethGross, parseEther(debouncedTokenIn), BigInt(token.currentPriceX18))
+        : undefined,
+    [quote.data, debouncedTokenIn, token.currentPriceX18]
+  );
 
   const insufficientAmount = useMemo(() => {
     if (!tokenIn || !tokenBalance.data) return false;
@@ -56,9 +80,18 @@ export function TokenSellForm() {
   }, [tokenIn, tokenBalance.data]);
 
   const sellMutation = useMutation({
-    mutationFn: () => (token.graduated ? dexSellToken(token, tokenIn) : sellToken(token, tokenIn)),
-    onSuccess: (hash) => {
-      if (!hash) return;
+    mutationFn: async () => {
+      const q = quote.data;
+      if (!q || debouncedTokenIn !== tokenIn) {
+        throw new Error("Quote not ready — wait a moment and try again");
+      }
+      if (isQuoteStale(quote.dataUpdatedAt)) {
+        void quote.refetch();
+        throw new Error("Quote expired — review the refreshed amount and try again");
+      }
+      return token.graduated ? dexSellToken(token, tokenIn, q.ethOutNet) : sellToken(token, tokenIn, q.ethOutNet);
+    },
+    onSuccess: () => {
       setTokenIn("");
       toast.success("Sell confirmed");
       // Prefix match refreshes native + ERC-20 balances for this account/chain.
@@ -81,7 +114,6 @@ export function TokenSellForm() {
     setTokenIn(formatEther(amount));
   };
 
-  const expectedEthOut = quote.data ? formatEther(quote.data.ethOutNet) : undefined;
   const tokenIconSrc = ipfsToHttp(token.metadata.imageUrl) || "/images/card/card-img-sm-1.png";
 
   const submitLabel = account.address ? (
@@ -106,14 +138,25 @@ export function TokenSellForm() {
       percentagePresets={[...PERCENTAGE_PRESETS]}
       onPercentagePreset={onPercentagePreset}
       onSubmit={onSubmit}
-      submitDisabled={sellMutation.isPending || insufficientAmount}
+      submitDisabled={sellMutation.isPending || insufficientAmount || !tokenIn || !quoteReady}
       submitLabel={submitLabel}
       quoteLoading={quote.isLoading}
       quoteText={
-        expectedEthOut && (
-          <span>
-            You will receive: {formatNumber(expectedEthOut, { maximumFractionDigits: 6 })} {chain.nativeCurrency.symbol}
-          </span>
+        quote.data && (
+          <>
+            <span className="block">
+              You will receive: {formatNumber(formatEther(quote.data.ethOutNet), { maximumFractionDigits: 6 })}{" "}
+              {chain.nativeCurrency.symbol}
+            </span>
+            {/* <span className="block">
+              Minimum received:{" "}
+              {formatNumber(formatEther(minReceived ?? 0n), { maximumFractionDigits: 6 })}{" "}
+              {chain.nativeCurrency.symbol}
+            </span> */}
+            {/* {impactBps !== undefined && (
+              <span className="block">Price impact: {(impactBps / 100).toFixed(2)}%</span>
+            )} */}
+          </>
         )
       }
     />

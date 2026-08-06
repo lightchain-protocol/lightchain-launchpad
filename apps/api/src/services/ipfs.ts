@@ -2,6 +2,9 @@ import { PinataSDK } from "pinata";
 
 import { config } from "../config.js";
 import { tokenMetadataJsonSchema, type TokenMetadataJson } from "./metadata-schema.js";
+import { metadataFetchUrls, parseIpfsUri } from "./untrusted-input.js";
+
+export { parseIpfsUri };
 
 const pinata = config.PINATA_JWT
   ? new PinataSDK({ pinataJwt: config.PINATA_JWT, pinataGateway: config.PINATA_GATEWAY })
@@ -43,26 +46,32 @@ export async function repinCid(cid: string): Promise<void> {
   }
 }
 
-/** Parse `ipfs://<cid>[/path]` into `[cid, path]`. Returns null for non-ipfs URIs. */
-export function parseIpfsUri(uri: string): { cid: string; path: string } | null {
-  const m = /^ipfs:\/\/([^/]+)(\/.*)?$/i.exec(uri.trim());
-  if (!m) return null;
-  return { cid: m[1]!, path: m[2] ?? "" };
-}
-
-/** Build candidate HTTP URLs for a metadata URI, gateways-first for ipfs:// */
+/** Build the URLs the resolver may fetch for a metadata URI: configured IPFS gateways only. */
 export function httpCandidates(uri: string): string[] {
-  const t = uri.trim();
-  const ipfs = parseIpfsUri(t);
-  if (ipfs) {
-    return config.IPFS_GATEWAYS.map((g) => `${g.replace(/\/$/, "")}/${ipfs.cid}${ipfs.path}`);
-  }
-  if (/^https:\/\//i.test(t)) return [t];
-  return [];
+  return metadataFetchUrls(uri, config.IPFS_GATEWAYS);
 }
 
 const MAX_JSON_BYTES = 64 * 1024;
 const FETCH_TIMEOUT_MS = 5_000;
+
+/** Read at most `max` bytes, aborting the stream rather than buffering past it. */
+async function readCapped(res: Response, max: number): Promise<string> {
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > max) {
+      await reader.cancel();
+      throw new Error("metadata too large");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
 
 async function fetchWithCaps(url: string): Promise<unknown> {
   const ac = new AbortController();
@@ -72,9 +81,7 @@ async function fetchWithCaps(url: string): Promise<unknown> {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const len = Number(res.headers.get("content-length") ?? "0");
     if (len > MAX_JSON_BYTES) throw new Error("metadata too large");
-    const text = await res.text();
-    if (text.length > MAX_JSON_BYTES) throw new Error("metadata too large");
-    return JSON.parse(text);
+    return JSON.parse(await readCapped(res, MAX_JSON_BYTES));
   } finally {
     clearTimeout(timer);
   }

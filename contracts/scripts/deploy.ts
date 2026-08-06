@@ -4,7 +4,7 @@
  *   2. ERC1967 (UUPS) proxy in front of it, initialised with the curve params
  *
  * Env (all optional):
- *   DEX_ROUTER   Uniswap-V2-compatible router address. If unset, mock Uniswap V2 is
+ *   DEX_ROUTER   Uniswap-V2-compatible router address. If unset, a real local Uniswap V2 is
  *                deployed (useful on a fresh Anvil / hardhat node).
  *   TREASURY     protocol fee recipient. Defaults to the deployer.
  *   FUNDING_GOAL / VIRTUAL_TOKEN_RESERVE / TOTAL_SUPPLY / LP_BPS — curve params; see
@@ -28,7 +28,7 @@ async function main() {
   const publicClient = await hre.viem.getPublicClient();
   const startBlockBefore = await publicClient.getBlockNumber();
 
-  const { launchpad, launchpadImpl, proxy, dexRouter: usedRouter, mockDex } =
+  const { launchpad, launchpadImpl, proxy, dexRouter: usedRouter, dex } =
     await deployLaunchpad({
       dexRouter,
       treasury,
@@ -57,9 +57,9 @@ async function main() {
     launchpad: proxy.address,
     launchpadImpl: launchpadImpl.address,
     dexRouter: usedRouter,
-    weth: mockDex?.weth.address ?? null,
-    uniswapV2Factory: mockDex?.factory.address ?? null,
-    mockDex: Boolean(mockDex),
+    weth: dex?.weth.address ?? null,
+    uniswapV2Factory: dex?.factory.address ?? null,
+    localDex: Boolean(dex),
     owner: await launchpad.read.owner(),
     treasury: await launchpad.read.treasury(),
   };
@@ -75,11 +75,11 @@ async function main() {
   console.log(
     "DEX router                  :",
     usedRouter,
-    mockDex ? "(mock — deployed for this run)" : "",
+    dex ? "(deployed locally for this run)" : "",
   );
-  if (mockDex) {
-    console.log("WETH                        :", mockDex.weth.address);
-    console.log("Uniswap V2 factory          :", mockDex.factory.address);
+  if (dex) {
+    console.log("WETH                        :", dex.weth.address);
+    console.log("Uniswap V2 factory          :", dex.factory.address);
   }
   console.log("owner                       :", deployment.owner);
   console.log("treasury                    :", deployment.treasury);

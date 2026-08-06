@@ -7,16 +7,20 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import dayjs from "@/lib/dayjs";
 import useCurrentChain from "@/hooks/useCurrentChain";
 import tokenQuery from "@/queries/tokenQuery";
-import { formatBigNumber, formatNumber } from "@/lib/utils";
+import useNativePrice from "@/hooks/useNativePrice";
+import { formatBigNumber, formatPrice, formatUsdPrice } from "@/lib/utils";
 import type { Trade } from "@/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@lcai/ui/components/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@lcai/ui/components/tooltip";
+import { ExternalLinkIcon } from "lucide-react";
 
 export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
   const chain = useCurrentChain();
   const { address } = useParams<{ address: string }>();
   const { data: token } = useSuspenseQuery(tokenQuery(address));
   const explorer = chain.blockExplorers?.default.url;
+  const nativePrice = useNativePrice();
+  const nativeSymbol = chain.nativeCurrency.symbol;
 
   return (
     <Table>
@@ -24,7 +28,7 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
         <TableRow>
           <TableHead>Account</TableHead>
           <TableHead>Type</TableHead>
-          <TableHead>{chain.nativeCurrency.symbol}</TableHead>
+          <TableHead>{nativeSymbol}</TableHead>
           <TableHead>{token.symbol}</TableHead>
           <TableHead>Date</TableHead>
           <TableHead>Transaction</TableHead>
@@ -33,7 +37,7 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
       <TableBody>
         {!trades?.length ? (
           <TableRow>
-            <TableCell colSpan={6} className="py-10 text-center font-normal">
+            <TableCell colSpan={7} className="py-10 text-center font-normal">
               No trades yet
             </TableCell>
           </TableRow>
@@ -74,7 +78,7 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
                   </TooltipContent>
                 </Tooltip>
               </TableCell>
-              <TableCell>
+              <TableCell className={trade.isBuy ? "text-success" : "text-destructive"}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="cursor-default">
@@ -102,10 +106,10 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
                     rel="noopener noreferrer"
                     className="hover:underline"
                   >
-                    {trade.txHash.slice(0, 12)}...
+                    {trade.txHash.slice(0, 6)}...
                   </Link>
                 ) : (
-                  <>{trade.txHash.slice(0, 12)}...</>
+                  <>{trade.txHash.slice(0, 6)}...</>
                 )}
               </TableCell>
             </TableRow>

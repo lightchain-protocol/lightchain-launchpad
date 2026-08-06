@@ -3,7 +3,7 @@ import { erc20Abi } from "viem";
 
 import { Token } from "@/types";
 import { launchpadAbi } from "@lcai/abis";
-import { MAX_UINT256 } from "@/lib/utils";
+import { applySlippage, MAX_UINT256 } from "@/lib/utils";
 import useUserStore from "@/store/user-store";
 import useContracts from "./useContracts";
 import useWeb3Clients from "./useWeb3Clients";
@@ -12,6 +12,16 @@ export default function useTradeFunctions() {
   const { publicClient, walletClient } = useWeb3Clients();
   const { launchpadContract } = useContracts();
   const { slippageTolerance } = useUserStore();
+
+  /**
+   * The wallet client resolves asynchronously. Returning early here used to make
+   * the Buy button a silent no-op — no error, no toast, no spinner change.
+   * Throwing routes into the forms' existing onError toast.
+   */
+  const requireWallet = () => {
+    if (!walletClient) throw new Error("Wallet not connected — reconnect and try again");
+    return walletClient;
+  };
 
   /** ETH-in → token-out quote. Returns the net ETH spent and tokens received. */
   const quoteBuy = async (
@@ -95,59 +105,73 @@ export default function useTradeFunctions() {
     return undefined;
   };
 
-  const applySlippage = (amount: bigint, side: "min" | "max"): bigint => {
-    const bps = BigInt(Math.round(slippageTolerance * 100)); // tolerance in % → bps
-    return side === "min"
-      ? (amount * (10_000n - bps)) / 10_000n
-      : (amount * (10_000n + bps)) / 10_000n;
-  };
-
   /**
-   * Buy tokens with `ethIn` native. The quote determines a slippage-adjusted
-   * `minTokensOut`. Returns the tx hash; throws on simulate / write errors.
+   * Buy tokens with `ethIn` native. `shownTokensOut` is the quote the UI
+   * displayed; the enforced `minTokensOut` is derived from it, so the floor the
+   * chain enforces is the number the user actually read.
    */
-  const buyToken = async (token: Token, ethIn: string): Promise<`0x${string}` | undefined> => {
-    if (!walletClient) return;
+  const buyToken = async (
+    token: Token,
+    ethIn: string,
+    shownTokensOut: bigint,
+  ): Promise<`0x${string}`> => {
+    const wallet = requireWallet();
     if (token.graduated) throw new Error("token has graduated; trade on the DEX");
 
-    const { tokensOut } = await quoteBuy(token, ethIn);
-    const minTokensOut = applySlippage(tokensOut, "min");
+    const minTokensOut = applySlippage(shownTokensOut, "min", slippageTolerance);
 
     const { request } = await launchpadContract.simulate.buy(
       [token.address, minTokensOut],
-      { value: parseEther(ethIn), account: walletClient.account.address },
+      { value: parseEther(ethIn), account: wallet.account.address },
     );
-    const hash = await walletClient.writeContract(request);
+    const hash = await wallet.writeContract(request);
     await publicClient.waitForTransactionReceipt({ hash });
     return hash;
   };
 
-  /** Buy targeting an exact token amount; spends the quoted gross ETH. */
+  /**
+   * Buy an exact token amount. The curve's `buy` is exact-native-in and only
+   * refunds a supply-clamped overshoot, so `msg.value` still has to come from a
+   * fresh quote — but `shownEthIn`, the cost the UI displayed, caps it. A
+   * re-quote above tolerance aborts before the wallet opens instead of silently
+   * overcharging.
+   */
   const buyTokenForTokens = async (
     token: Token,
     tokensOut: string,
-  ): Promise<`0x${string}` | undefined> => {
-    if (!walletClient) return;
+    shownEthIn: bigint,
+  ): Promise<`0x${string}`> => {
+    const wallet = requireWallet();
     if (token.graduated) throw new Error("token has graduated; trade on the DEX");
 
+    const maxEthIn = applySlippage(shownEthIn, "max", slippageTolerance);
     const { ethIn, tokensOut: desired } = await quoteBuyForTokens(token, tokensOut);
-    const minTokensOut = applySlippage(desired, "min");
+    if (ethIn > maxEthIn) {
+      throw new Error("Price moved beyond your slippage tolerance — refresh the quote");
+    }
+
+    const minTokensOut = applySlippage(desired, "min", slippageTolerance);
 
     const { request } = await launchpadContract.simulate.buy(
       [token.address, minTokensOut],
-      { value: ethIn, account: walletClient.account.address },
+      { value: ethIn, account: wallet.account.address },
     );
-    const hash = await walletClient.writeContract(request);
+    const hash = await wallet.writeContract(request);
     await publicClient.waitForTransactionReceipt({ hash });
     return hash;
   };
 
   /**
-   * Sell `tokenIn` tokens for ETH. We pre-approve the launchpad to spend the
-   * tokens (max allowance, one-time), then sell at slippage-adjusted minEthOut.
+   * Sell `tokenIn` tokens for native. `shownEthOut` is the quote the UI
+   * displayed; `minEthOut` is derived from it. Pre-approves the launchpad once
+   * (max allowance) when the allowance is short.
    */
-  const sellToken = async (token: Token, tokenIn: string): Promise<`0x${string}` | undefined> => {
-    if (!walletClient) return;
+  const sellToken = async (
+    token: Token,
+    tokenIn: string,
+    shownEthOut: bigint,
+  ): Promise<`0x${string}`> => {
+    const wallet = requireWallet();
     if (token.graduated) throw new Error("token has graduated; trade on the DEX");
 
     const tokenAmount = parseEther(tokenIn);
@@ -155,10 +179,10 @@ export default function useTradeFunctions() {
       address: token.address,
       abi: erc20Abi,
       functionName: "allowance",
-      args: [walletClient.account.address, launchpadContract.address],
+      args: [wallet.account.address, launchpadContract.address],
     });
     if (allowance < tokenAmount) {
-      const approveHash = await walletClient.writeContract({
+      const approveHash = await wallet.writeContract({
         address: token.address,
         abi: erc20Abi,
         functionName: "approve",
@@ -167,14 +191,13 @@ export default function useTradeFunctions() {
       await publicClient.waitForTransactionReceipt({ hash: approveHash });
     }
 
-    const { ethOutNet } = await quoteSell(token, tokenIn);
-    const minEthOut = applySlippage(ethOutNet, "min");
+    const minEthOut = applySlippage(shownEthOut, "min", slippageTolerance);
 
     const { request } = await launchpadContract.simulate.sell(
       [token.address, tokenAmount, minEthOut],
-      { account: walletClient.account.address },
+      { account: wallet.account.address },
     );
-    const hash = await walletClient.writeContract(request);
+    const hash = await wallet.writeContract(request);
     await publicClient.waitForTransactionReceipt({ hash });
     return hash;
   };

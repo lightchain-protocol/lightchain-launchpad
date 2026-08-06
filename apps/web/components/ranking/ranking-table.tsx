@@ -9,12 +9,12 @@ import { Loader2 } from "lucide-react";
 import rankingQuery from "@/queries/rankingQuery";
 import dayjs from "@/lib/dayjs";
 import { ipfsToHttp, weiToNative } from "@/lib/ipfs";
-import { formatNumber } from "@/lib/utils";
-import useStore from "@/store";
+import { formatUsd } from "@/lib/utils";
+import useNativePrice from "@/hooks/useNativePrice";
 import type { TokenListItem } from "@/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@lcai/ui/components/table";
 
-function RankingRow({ item, rank, marketCapUSD }: { item: TokenListItem; rank: number; marketCapUSD: number }) {
+function RankingRow({ item, rank, marketCapUSD }: { item: TokenListItem; rank: number; marketCapUSD: string }) {
   // const bondingPct = Math.min(100, item.progressBps / 100);
   const imageUrl = ipfsToHttp(item.metadata.imageUrl);
 
@@ -25,21 +25,21 @@ function RankingRow({ item, rank, marketCapUSD }: { item: TokenListItem; rank: n
           <span className="theme-gradient text-xl font-bold">{rank}</span>
           <img
             src={imageUrl || "/images/card/card-img-sm-1.png"}
-            className="h-12 w-12 rounded-lg object-cover"
+            className="h-12 w-12 rounded-lg bg-primary/30 object-contain"
             alt={item.name}
           />
-          <Link href={`/token/${item.address}`} className="font-medium text-primary hover:underline">
+          <Link href={`/token/${item.address}`} className="font-medium hover:underline">
             {item.name} (${item.symbol})
           </Link>
         </div>
       </TableCell>
-      <TableCell className="font-medium">${formatNumber(marketCapUSD)}</TableCell>
+      <TableCell className="font-medium">{marketCapUSD}</TableCell>
     </TableRow>
   );
 }
 
 export function RankingTable() {
-  const { nativePrice } = useStore();
+  const nativePrice = useNativePrice();
   const { data: tokens, isLoading, isError, dataUpdatedAt } = useQuery(rankingQuery());
 
   const lastUpdated = useMemo(
@@ -78,7 +78,7 @@ export function RankingTable() {
                     key={item.address}
                     item={item}
                     rank={index + 1}
-                    marketCapUSD={weiToNative(item.marketCap) * nativePrice}
+                    marketCapUSD={formatUsd(weiToNative(item.marketCap), nativePrice)}
                   />
                 ))}
               </TableBody>
