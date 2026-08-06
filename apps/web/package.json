@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint --max-warnings 24",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
