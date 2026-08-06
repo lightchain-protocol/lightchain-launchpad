@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { boundNotifyPayload, NOTIFY_MAX_BYTES } from "./notify-payload.js";
+import { boundNotifyPayload, NOTIFY_MAX_BYTES } from "../src/lib/notify-payload.js";
 
 const TOKEN = "0x1111111111111111111111111111111111111111";
 const bytes = (s: string) => Buffer.byteLength(s, "utf8");

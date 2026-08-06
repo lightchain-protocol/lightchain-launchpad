@@ -6,7 +6,7 @@ import {
   mergeCandle,
   newCandle,
   type CandleState,
-} from "./candles-math.js";
+} from "../src/lib/candles-math.js";
 
 const PRICE = 100n;
 const VOL = 5n;

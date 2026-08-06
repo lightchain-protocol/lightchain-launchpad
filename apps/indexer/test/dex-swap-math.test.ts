@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseDexSwapAmounts, type PairMeta } from "./dex-swap-math.js";
+import { parseDexSwapAmounts, type PairMeta } from "../src/lib/dex-swap-math.js";
 
 const WAD = 10n ** 18n;
 
