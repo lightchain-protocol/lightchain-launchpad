@@ -21,7 +21,7 @@ export const DEFAULTS = {
 export interface DeployOpts {
   owner?: Address;
   treasury?: Address;
-  dexRouter?: Address; // if omitted, mock Uniswap V2 is deployed
+  dexRouter?: Address; // if omitted, a real local Uniswap V2 stack is deployed
   creationFee?: bigint;
   tradeFeeBps?: number;
   graduationFeeBps?: number;
@@ -36,10 +36,23 @@ export interface DeployOpts {
   tradeCooldown?: number;
 }
 
-export async function deployMockDex() {
-  const weth = await hre.viem.deployContract("MockWETH", []);
-  const factory = await hre.viem.deployContract("MockUniswapV2Factory", []);
-  const router = await hre.viem.deployContract("MockUniswapV2Router", [
+/**
+ * Deploys the real Uniswap V2 stack — canonical WETH9, UniswapV2Factory and
+ * UniswapV2Router02, not mocks. `UniswapV2Library.pairFor` derives pair
+ * addresses with CREATE2 against a hardcoded init code hash, so the router in
+ * `contracts/uniswap/` carries the hash of the `UniswapV2Pair` this repo
+ * compiles (see the note in that file; a test asserts the two stay in sync).
+ *
+ * The deployer is used as `feeToSetter`; `feeTo` is left unset, which is the
+ * mainnet default (the 1/6 protocol fee is off).
+ */
+export async function deployDex() {
+  const [deployer] = await hre.viem.getWalletClients();
+  const weth = await hre.viem.deployContract("WETH9", []);
+  const factory = await hre.viem.deployContract("UniswapV2Factory", [
+    getAddress(deployer.account.address),
+  ]);
+  const router = await hre.viem.deployContract("UniswapV2Router02", [
     getAddress(factory.address),
     getAddress(weth.address),
   ]);
@@ -63,10 +76,10 @@ export async function deployLaunchpad(opts: DeployOpts = {}) {
   const treasury = opts.treasury ?? owner;
 
   let dexRouter = opts.dexRouter;
-  let mockDex: Awaited<ReturnType<typeof deployMockDex>> | undefined;
+  let dex: Awaited<ReturnType<typeof deployDex>> | undefined;
   if (!dexRouter) {
-    mockDex = await deployMockDex();
-    dexRouter = getAddress(mockDex.router.address);
+    dex = await deployDex();
+    dexRouter = getAddress(dex.router.address);
   }
 
   const launchpadImpl = await hre.viem.deployContract("Launchpad", [], {
@@ -104,5 +117,5 @@ export async function deployLaunchpad(opts: DeployOpts = {}) {
     client,
   });
 
-  return { launchpad, launchpadImpl, proxy, dexRouter, mockDex, initArgs };
+  return { launchpad, launchpadImpl, proxy, dexRouter, dex, initArgs };
 }

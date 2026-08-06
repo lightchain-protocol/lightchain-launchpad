@@ -13,10 +13,17 @@ const forking = ALCHEMY_API_KEY ? { url: `https://eth-mainnet.g.alchemy.com/v2/$
 const config: HardhatUserConfig = {
   solidity: {
     compilers: [
-      // kept for Uniswap V2 periphery sources, if ever compiled locally
+      // Uniswap V2 core (Pair/Factory) — pinned `pragma solidity =0.5.16`.
+      // `runs: 999999` matches Uniswap's own build so the compiled Pair is the
+      // one the protocol actually ships.
+      {
+        version: "0.5.16",
+        settings: { optimizer: { enabled: true, runs: 999999 } },
+      },
+      // Uniswap V2 periphery (Router02/WETH9) — pinned `pragma solidity =0.6.6`.
       {
         version: "0.6.6",
-        settings: { optimizer: { enabled: true, runs: 200 } },
+        settings: { optimizer: { enabled: true, runs: 999999 } },
       },
       {
         version: "0.8.28",

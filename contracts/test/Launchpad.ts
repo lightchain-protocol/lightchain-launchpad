@@ -60,26 +60,26 @@ const bal = (publicClient: any, addr: Address): Promise<bigint> => publicClient.
 // Move `amount` of `what` into the token/WETH pair and sync, the way a griefer
 // would: no LP is minted, so the donation is unrecoverable for the donor.
 async function donateToPair(
-  mockDex: any,
+  dex: any,
   tokenAddr: Address,
   what: "token" | "weth",
   amount: bigint,
   from: any,
   token?: any,
 ) {
-  const weth = getAddress(mockDex.weth.address);
-  let pair = (await mockDex.factory.read.getPair([tokenAddr, weth])) as Address;
+  const weth = getAddress(dex.weth.address);
+  let pair = (await dex.factory.read.getPair([tokenAddr, weth])) as Address;
   if (pair === zeroAddress) {
-    await mockDex.factory.write.createPair([tokenAddr, weth]);
-    pair = (await mockDex.factory.read.getPair([tokenAddr, weth])) as Address;
+    await dex.factory.write.createPair([tokenAddr, weth]);
+    pair = (await dex.factory.read.getPair([tokenAddr, weth])) as Address;
   }
   if (what === "weth") {
-    await mockDex.weth.write.deposit({ value: amount, account: from.account });
-    await mockDex.weth.write.transfer([getAddress(pair), amount], { account: from.account });
+    await dex.weth.write.deposit({ value: amount, account: from.account });
+    await dex.weth.write.transfer([getAddress(pair), amount], { account: from.account });
   } else {
     await token.write.transfer([getAddress(pair), amount], { account: from.account });
   }
-  await (await hre.viem.getContractAt("MockUniswapV2Pair", getAddress(pair))).write.sync();
+  await (await hre.viem.getContractAt("UniswapV2Pair", getAddress(pair))).write.sync();
   return getAddress(pair);
 }
 
@@ -112,12 +112,12 @@ describe("Launchpad", () => {
   // -------------------------------------------------------------------------
   describe("deployment & config", () => {
     it("initializes with the supplied config and derives a consistent curve", async () => {
-      const { launchpad, deployer, mockDex } = await loadFixture(baseFixture);
+      const { launchpad, deployer, dex } = await loadFixture(baseFixture);
       expect(await launchpad.read.owner()).to.equal(getAddress(deployer.account.address));
       expect(await launchpad.read.creationFee()).to.equal(DEFAULTS.creationFee);
       expect(await launchpad.read.tradeFeeBps()).to.equal(DEFAULTS.tradeFeeBps);
       expect(await launchpad.read.graduationFeeBps()).to.equal(DEFAULTS.graduationFeeBps);
-      expect(await launchpad.read.dexRouter()).to.equal(getAddress(mockDex!.router.address));
+      expect(await launchpad.read.dexRouter()).to.equal(getAddress(dex!.router.address));
       const ve: bigint = await launchpad.read.virtualEthReserve();
       const vt: bigint = await launchpad.read.virtualTokenReserve();
       const m: bigint = await launchpad.read.maxSupplyForSale();
@@ -414,7 +414,7 @@ describe("Launchpad", () => {
       const pairAddr = (await launchpad.read.pairOf([tokenAddr])) as Address;
       expect(pairAddr).to.not.equal(zeroAddress);
       expect(await token.read.balanceOf([pairAddr])).to.equal(lpSupply);
-      const pair = await hre.viem.getContractAt("MockUniswapV2Pair", pairAddr);
+      const pair = await hre.viem.getContractAt("UniswapV2Pair", pairAddr);
       expect(await pair.read.balanceOf([getAddress(launchpad.address)])).to.equal(0n);
       gt(await pair.read.balanceOf([DEAD]), 0n); // LP burned
 
@@ -430,10 +430,10 @@ describe("Launchpad", () => {
     });
 
     it("graduates fine when the pool was pre-created (anti-brick)", async () => {
-      const { launchpad, token, tokenAddr, bob, mockDex } = await loadFixture(launchedFixture);
-      const weth = getAddress(mockDex!.weth.address);
-      await mockDex!.factory.write.createPair([getAddress(token.address), weth]);
-      const preCreated = (await mockDex!.factory.read.getPair([getAddress(token.address), weth])) as Address;
+      const { launchpad, token, tokenAddr, bob, dex } = await loadFixture(launchedFixture);
+      const weth = getAddress(dex!.weth.address);
+      await dex!.factory.write.createPair([getAddress(token.address), weth]);
+      const preCreated = (await dex!.factory.read.getPair([getAddress(token.address), weth])) as Address;
       expect(preCreated).to.not.equal(zeroAddress);
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
       expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
@@ -445,8 +445,8 @@ describe("Launchpad", () => {
     // choose the ratio the launchpad deposits at — so the normal path must
     // refuse to deposit at all rather than donate the raise to it.
     it("reverts graduation when the pair was pre-seeded with real reserves", async () => {
-      const { launchpad, token, tokenAddr, bob, carol, mockDex } = await loadFixture(launchedFixture);
-      const router = mockDex!.router;
+      const { launchpad, token, tokenAddr, bob, carol, dex } = await loadFixture(launchedFixture);
+      const router = dex!.router;
 
       // attacker buys a little on the curve just to obtain tokens...
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("1"), account: carol.account });
@@ -469,16 +469,16 @@ describe("Launchpad", () => {
     // curve forever. It must self-heal with no owner action — the whole point is
     // that a 1-wei grief cannot require a governance proposal to undo.
     it("self-heals a native-only donated reserve with no owner action", async () => {
-      const { launchpad, token, tokenAddr, bob, carol, mockDex } = await loadFixture(launchedFixture);
-      const wethC = mockDex!.weth;
+      const { launchpad, token, tokenAddr, bob, carol, dex } = await loadFixture(launchedFixture);
+      const wethC = dex!.weth;
       const weth = getAddress(wethC.address);
 
-      await mockDex!.factory.write.createPair([tokenAddr, weth]);
-      const pair = getAddress((await mockDex!.factory.read.getPair([tokenAddr, weth])) as Address);
+      await dex!.factory.write.createPair([tokenAddr, weth]);
+      const pair = getAddress((await dex!.factory.read.getPair([tokenAddr, weth])) as Address);
 
       await wethC.write.deposit({ value: 1n, account: carol.account });
       await wethC.write.transfer([pair, 1n], { account: carol.account });
-      await (await hre.viem.getContractAt("MockUniswapV2Pair", pair)).write.syncFromBalances();
+      await (await hre.viem.getContractAt("UniswapV2Pair", pair)).write.sync();
 
       // ordinary buy graduates straight through
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
@@ -495,9 +495,9 @@ describe("Launchpad", () => {
     // spare native to rebalance with — so it stays a deliberate revert with a
     // human decision behind it.
     it("owner can graduate a token whose pair was pre-seeded on both sides", async () => {
-      const { launchpad, token, tokenAddr, deployer, bob, carol, mockDex } =
+      const { launchpad, token, tokenAddr, deployer, bob, carol, dex } =
         await loadFixture(launchedFixture);
-      const router = mockDex!.router;
+      const router = dex!.router;
 
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("1"), account: carol.account });
       await token.write.approve([getAddress(router.address), MAX_UINT], { account: carol.account });
@@ -516,7 +516,7 @@ describe("Launchpad", () => {
       expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
       const pair = getAddress(await launchpad.read.pairOf([tokenAddr]));
       gt(await token.read.balanceOf([pair]), 0n);
-      gt(await mockDex!.weth.read.balanceOf([pair]), 0n);
+      gt(await dex!.weth.read.balanceOf([pair]), 0n);
     });
 
     // A pair holding exactly one non-zero reserve makes UniswapV2Library.quote
@@ -524,44 +524,44 @@ describe("Launchpad", () => {
     // all — not even for the owner. Until someone mints LP there is no
     // counterparty, so the launchpad seeds the pair itself at its own ratio.
     it("self-heals a 1-wei token-only donated reserve with no owner action", async () => {
-      const { launchpad, token, tokenAddr, bob, carol, mockDex } = await loadFixture(launchedFixture);
+      const { launchpad, token, tokenAddr, bob, carol, dex } = await loadFixture(launchedFixture);
 
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("1"), account: carol.account });
-      const pair = await donateToPair(mockDex!, tokenAddr, "token", 1n, carol, token);
+      const pair = await donateToPair(dex!, tokenAddr, "token", 1n, carol, token);
 
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
       expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
 
       const lpSupply: bigint = await launchpad.read.lpSupplyOf([tokenAddr]);
       const ethForLp = await ethForLpOf(launchpad, tokenAddr);
-      const pairC = await hre.viem.getContractAt("MockUniswapV2Pair", pair);
+      const pairC = await hre.viem.getContractAt("UniswapV2Pair", pair);
 
       expect(await token.read.balanceOf([pair])).to.equal(lpSupply + 1n);
-      expect(await mockDex!.weth.read.balanceOf([pair])).to.equal(ethForLp);
+      expect(await dex!.weth.read.balanceOf([pair])).to.equal(ethForLp);
       expect(await pairC.read.balanceOf([getAddress(launchpad.address)])).to.equal(0n);
       gt(await pairC.read.balanceOf([DEAD]), 1000n);
       expect(await token.read.balanceOf([getAddress(launchpad.address)])).to.equal(0n);
     });
 
     it("self-heals a large token-only donated reserve with no owner action", async () => {
-      const { launchpad, token, tokenAddr, bob, carol, mockDex, publicClient } =
+      const { launchpad, token, tokenAddr, bob, carol, dex, publicClient } =
         await loadFixture(launchedFixture);
 
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("1"), account: carol.account });
       const donated: bigint = await token.read.balanceOf([getAddress(carol.account.address)]);
       gt(donated, 0n);
       const carolNativeBefore = await bal(publicClient, getAddress(carol.account.address));
-      const pair = await donateToPair(mockDex!, tokenAddr, "token", donated, carol, token);
+      const pair = await donateToPair(dex!, tokenAddr, "token", donated, carol, token);
 
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
       expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
 
       const lpSupply: bigint = await launchpad.read.lpSupplyOf([tokenAddr]);
       const ethForLp = await ethForLpOf(launchpad, tokenAddr);
-      const pairC = await hre.viem.getContractAt("MockUniswapV2Pair", pair);
+      const pairC = await hre.viem.getContractAt("UniswapV2Pair", pair);
 
       expect(await token.read.balanceOf([pair])).to.equal(lpSupply + donated);
-      expect(await mockDex!.weth.read.balanceOf([pair])).to.equal(ethForLp);
+      expect(await dex!.weth.read.balanceOf([pair])).to.equal(ethForLp);
 
       // the griefer gained nothing: no tokens, no LP, and no native back
       expect(await token.read.balanceOf([getAddress(carol.account.address)])).to.equal(0n);
@@ -570,32 +570,32 @@ describe("Launchpad", () => {
     });
 
     it("self-heals a native-only donated reserve far above the old dust cap", async () => {
-      const { launchpad, token, tokenAddr, bob, carol, mockDex } = await loadFixture(launchedFixture);
+      const { launchpad, token, tokenAddr, bob, carol, dex } = await loadFixture(launchedFixture);
 
       // the old DUST_DENOM cap was ethForLp / 10_000 (~0.003 native); this is ~1700x over it
-      const pair = await donateToPair(mockDex!, tokenAddr, "weth", parseEther("5"), carol);
+      const pair = await donateToPair(dex!, tokenAddr, "weth", parseEther("5"), carol);
 
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
       expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
 
       const lpSupply: bigint = await launchpad.read.lpSupplyOf([tokenAddr]);
       const ethForLp = await ethForLpOf(launchpad, tokenAddr);
-      const pairC = await hre.viem.getContractAt("MockUniswapV2Pair", pair);
+      const pairC = await hre.viem.getContractAt("UniswapV2Pair", pair);
 
       expect(await token.read.balanceOf([pair])).to.equal(lpSupply);
-      expect(await mockDex!.weth.read.balanceOf([pair])).to.equal(ethForLp + parseEther("5"));
+      expect(await dex!.weth.read.balanceOf([pair])).to.equal(ethForLp + parseEther("5"));
       expect(await pairC.read.balanceOf([getAddress(carol.account.address)])).to.equal(0n);
-      expect(await mockDex!.weth.read.balanceOf([getAddress(carol.account.address)])).to.equal(0n);
+      expect(await dex!.weth.read.balanceOf([getAddress(carol.account.address)])).to.equal(0n);
       gt(await pairC.read.balanceOf([DEAD]), 1000n);
     });
 
     it("graduateByOwner rescues a one-sided pair and still deposits the full raise", async () => {
-      const { launchpad, token, tokenAddr, deployer, bob, carol, mockDex, publicClient } =
+      const { launchpad, token, tokenAddr, deployer, bob, carol, dex, publicClient } =
         await loadFixture(launchedFixture);
 
       // below the funding goal, so only the owner can graduate
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("5"), account: bob.account });
-      await donateToPair(mockDex!, tokenAddr, "weth", parseEther("60"), carol);
+      await donateToPair(dex!, tokenAddr, "weth", parseEther("60"), carol);
 
       const lpSupply: bigint = await launchpad.read.lpSupplyOf([tokenAddr]);
       const ethForLp = await ethForLpOf(launchpad, tokenAddr);
@@ -609,31 +609,32 @@ describe("Launchpad", () => {
       expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
       const pair = getAddress(await launchpad.read.pairOf([tokenAddr]));
       expect(await token.read.balanceOf([pair])).to.equal(lpSupply);
-      expect(await mockDex!.weth.read.balanceOf([pair])).to.equal(ethForLp + parseEther("60"));
+      expect(await dex!.weth.read.balanceOf([pair])).to.equal(ethForLp + parseEther("60"));
       expect(await token.read.balanceOf([getAddress(launchpad.address)])).to.equal(0n);
       await checkBackingInvariant(launchpad, [tokenAddr], publicClient);
     });
 
-    // Guards the mock against drifting back: without the reason-string match this
-    // would pass even with the old mock (token side underflowed inside mint, WETH
-    // side panicked on a divide-by-zero) and would prove nothing.
-    it("the mock router mirrors UniswapV2's one-sided-reserve revert", async () => {
+    // Pins the precondition the self-seed branch exists for: UniswapV2Library.quote
+    // requires BOTH reserves non-zero, so the router cannot seed a one-sided pair —
+    // not even for the owner. The reason string matters: a bare `.to.be.rejected`
+    // would also pass on an unrelated revert and would prove nothing.
+    it("UniswapV2Router02 refuses a one-sided reserve, which is what forces the self-seed", async () => {
       {
-        const { launchpad, token, tokenAddr, carol, mockDex } = await loadFixture(launchedFixture);
+        const { launchpad, token, tokenAddr, carol, dex } = await loadFixture(launchedFixture);
         await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("1"), account: carol.account });
-        await donateToPair(mockDex!, tokenAddr, "token", 1n, carol, token);
+        await donateToPair(dex!, tokenAddr, "token", 1n, carol, token);
         await expect(
-          mockDex!.router.write.addLiquidityETH(
+          dex!.router.write.addLiquidityETH(
             [tokenAddr, 1000n, 0n, 0n, getAddress(carol.account.address), farDeadline()],
             { value: parseEther("1"), account: carol.account },
           ),
         ).to.be.rejectedWith(/INSUFFICIENT_LIQUIDITY/);
       }
       {
-        const { tokenAddr, carol, mockDex } = await loadFixture(launchedFixture);
-        await donateToPair(mockDex!, tokenAddr, "weth", 1n, carol);
+        const { tokenAddr, carol, dex } = await loadFixture(launchedFixture);
+        await donateToPair(dex!, tokenAddr, "weth", 1n, carol);
         await expect(
-          mockDex!.router.write.addLiquidityETH(
+          dex!.router.write.addLiquidityETH(
             [tokenAddr, 1000n, 0n, 0n, getAddress(carol.account.address), farDeadline()],
             { value: parseEther("1"), account: carol.account },
           ),
@@ -642,7 +643,7 @@ describe("Launchpad", () => {
     });
 
     it("deposits the entire LP supply and the entire post-fee raise into a fresh pair", async () => {
-      const { launchpad, token, tokenAddr, bob, mockDex } = await loadFixture(launchedFixture);
+      const { launchpad, token, tokenAddr, bob, dex } = await loadFixture(launchedFixture);
       const lpSupply: bigint = await launchpad.read.lpSupplyOf([tokenAddr]);
 
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
@@ -651,15 +652,15 @@ describe("Launchpad", () => {
       const pair = getAddress(await launchpad.read.pairOf([tokenAddr]));
       // the whole intended LP allocation reached the pool — nothing skimmed, nothing burned
       expect(await token.read.balanceOf([pair])).to.equal(lpSupply);
-      gt(await mockDex!.weth.read.balanceOf([pair]), 0n);
+      gt(await dex!.weth.read.balanceOf([pair]), 0n);
     });
 
     it("supports exact-token buys via swapETHForExactTokens after graduation", async () => {
-      const { launchpad, token, tokenAddr, bob, carol, mockDex } = await loadFixture(launchedFixture);
+      const { launchpad, token, tokenAddr, bob, carol, dex } = await loadFixture(launchedFixture);
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
 
-      const router = mockDex!.router;
-      const weth = getAddress(mockDex!.weth.address);
+      const router = dex!.router;
+      const weth = getAddress(dex!.weth.address);
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
       const pathBuy = [weth, tokenAddr] as const;
       const want = parseEther("1000");
@@ -674,13 +675,13 @@ describe("Launchpad", () => {
       expect(await token.read.balanceOf([getAddress(carol.account.address)])).to.equal(before + want);
     });
 
-    it("supports post-graduation swaps via the mock Uniswap V2 router", async () => {
-      const { launchpad, token, tokenAddr, bob, carol, mockDex, publicClient } = await loadFixture(launchedFixture);
+    it("supports post-graduation swaps via the Uniswap V2 router", async () => {
+      const { launchpad, token, tokenAddr, bob, carol, dex, publicClient } = await loadFixture(launchedFixture);
       await launchpad.write.buy([tokenAddr, 0n], { value: parseEther("40"), account: bob.account });
       expect(await launchpad.read.isGraduated([tokenAddr])).to.equal(true);
 
-      const router = mockDex!.router;
-      const weth = getAddress(mockDex!.weth.address);
+      const router = dex!.router;
+      const weth = getAddress(dex!.weth.address);
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
       const pathBuy = [weth, tokenAddr] as const;
       const pathSell = [tokenAddr, weth] as const;
