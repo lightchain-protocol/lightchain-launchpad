@@ -7,8 +7,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import dayjs from "@/lib/dayjs";
 import useCurrentChain from "@/hooks/useCurrentChain";
 import tokenQuery from "@/queries/tokenQuery";
-import useNativePrice from "@/hooks/useNativePrice";
-import { formatBigNumber, formatPrice, formatUsdPrice } from "@/lib/utils";
+import { formatBigNumber } from "@/lib/utils";
 import type { Trade } from "@/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@lcai/ui/components/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@lcai/ui/components/tooltip";
@@ -19,7 +18,6 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
   const { address } = useParams<{ address: string }>();
   const { data: token } = useSuspenseQuery(tokenQuery(address));
   const explorer = chain.blockExplorers?.default.url;
-  const nativePrice = useNativePrice();
   const nativeSymbol = chain.nativeCurrency.symbol;
 
   return (
@@ -37,7 +35,7 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
       <TableBody>
         {!trades?.length ? (
           <TableRow>
-            <TableCell colSpan={7} className="py-10 text-center font-normal">
+            <TableCell colSpan={6} className="py-10 text-center font-normal">
               No trades yet
             </TableCell>
           </TableRow>
@@ -104,9 +102,10 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
                     href={`${explorer}/tx/${trade.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="hover:underline"
+                    className="inline-flex items-center gap-1 hover:underline"
                   >
                     {trade.txHash.slice(0, 6)}...
+                    <ExternalLinkIcon size={12} aria-hidden />
                   </Link>
                 ) : (
                   <>{trade.txHash.slice(0, 6)}...</>

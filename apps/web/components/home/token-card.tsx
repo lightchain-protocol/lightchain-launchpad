@@ -2,7 +2,6 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { CheckCircle2 } from "lucide-react";
 
-import dayjs from "@/lib/dayjs";
 import { ipfsToHttp, weiToNative } from "@/lib/ipfs";
 import { formatUsd } from "@/lib/utils";
 import useNativePrice from "@/hooks/useNativePrice";
