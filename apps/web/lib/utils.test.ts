@@ -9,6 +9,9 @@ import {
   DEADLINE_MIN,
   deadlineFromNow,
   formatNative,
+  isQuoteStale,
+  priceImpactBps,
+  QUOTE_MAX_AGE_MS,
   SLIPPAGE_DEFAULT,
   SLIPPAGE_MAX,
   SLIPPAGE_MIN,
@@ -136,5 +139,73 @@ describe("formatNative", () => {
     const compact = formatNative(1_500_000, "LCAI", { notation: "compact" });
     expect(compact).not.toBe(formatNative(1_500_000, "LCAI"));
     expect(compact).not.toContain("$");
+  });
+});
+
+describe("minimum received (the number the transaction is guaranteed to honour)", () => {
+  // The whole point of plan 010: the enforced floor is applySlippage applied to
+  // the amount the UI displayed, so it must equal that amount reduced by
+  // exactly the tolerance and nothing else.
+  it("reduces the displayed amount by exactly the tolerance", () => {
+    expect(applySlippage(1_000_000n, "min", 2.5)).toBe(975_000n);
+  });
+
+  // A user who sets 0% is asking for "no slippage at all", which would make
+  // every trade revert on any concurrent activity. clampSlippage floors it at
+  // SLIPPAGE_MIN (0.1%), so the floor is 99.9%, not 100%. Deliberate.
+  it("clamps a zero tolerance up to SLIPPAGE_MIN rather than enforcing the exact quote", () => {
+    expect(clampSlippage(0)).toBe(SLIPPAGE_MIN);
+    expect(applySlippage(1_000_000n, "min", 0)).toBe(999_000n);
+  });
+
+  it("floors at half the displayed amount at the maximum tolerance", () => {
+    expect(applySlippage(1_000_000n, "min", SLIPPAGE_MAX)).toBe(500_000n);
+  });
+
+  // Exact-tokens paths anchor a maximum cost instead of a minimum output.
+  it("caps the displayed cost by exactly the tolerance on the max side", () => {
+    expect(applySlippage(1_000_000n, "max", 2.5)).toBe(1_025_000n);
+  });
+});
+
+describe("priceImpactBps", () => {
+  const SPOT = 10n ** 15n; // 0.001 native per token, 1e18-scaled
+  const ONE_TOKEN_UNIT = 10n ** 18n;
+
+  it("is zero for a trade that executes at spot", () => {
+    expect(priceImpactBps(SPOT, ONE_TOKEN_UNIT, SPOT)).toBe(0);
+  });
+
+  it("reports a curve-moving buy as its full deviation", () => {
+    // execution price 10% above spot → 1000 bps
+    expect(priceImpactBps(11n * 10n ** 14n, ONE_TOKEN_UNIT, SPOT)).toBe(1000);
+  });
+
+  it("is symmetric for a sell that executes below spot", () => {
+    expect(priceImpactBps(9n * 10n ** 14n, ONE_TOKEN_UNIT, SPOT)).toBe(1000);
+  });
+
+  it("returns undefined rather than dividing by zero", () => {
+    expect(priceImpactBps(SPOT, 0n, SPOT)).toBeUndefined();
+    expect(priceImpactBps(SPOT, ONE_TOKEN_UNIT, 0n)).toBeUndefined();
+  });
+});
+
+describe("isQuoteStale", () => {
+  // Fixed clock: a real Date.now() would make the boundary case flaky.
+  const NOW = 1_800_000_000_000;
+
+  it("rejects a quote older than the threshold", () => {
+    expect(isQuoteStale(NOW - QUOTE_MAX_AGE_MS - 1, NOW)).toBe(true);
+  });
+
+  it("accepts a quote exactly at the threshold", () => {
+    expect(isQuoteStale(NOW - QUOTE_MAX_AGE_MS, NOW)).toBe(false);
+  });
+
+  // TanStack Query reports dataUpdatedAt === 0 before the first success; that
+  // must never count as a fresh quote.
+  it("treats a never-fetched quote as stale", () => {
+    expect(isQuoteStale(0, NOW)).toBe(true);
   });
 });

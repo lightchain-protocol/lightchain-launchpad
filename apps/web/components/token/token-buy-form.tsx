@@ -7,7 +7,7 @@ import { Loader2 } from "lucide-react";
 import { hashFn } from "wagmi/query";
 import { useConnection } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
-import { formatEther } from "viem";
+import { formatEther, parseEther } from "viem";
 import { toast } from "sonner";
 
 import { TokenTradeFormShell } from "@/components/token/token-trade-form-shell";
@@ -18,7 +18,14 @@ import useTradeFunctions from "@/hooks/useTradeFunctions";
 import { useDebouncedValue } from "@/hooks/useDebounce";
 import { ipfsToHttp } from "@/lib/ipfs";
 import tokenQuery from "@/queries/tokenQuery";
-import { formatNumber } from "@/lib/utils";
+import {
+  applySlippage,
+  formatNumber,
+  isQuoteStale,
+  priceImpactBps,
+  QUOTE_REFRESH_MS,
+} from "@/lib/utils";
+import useUserStore from "@/store/user-store";
 
 const AMOUNT_PRESETS = [0.1, 0.5, 1] as const;
 
@@ -43,30 +50,71 @@ export function TokenBuyForm() {
   const tokenIconSrc = ipfsToHttp(token.metadata.imageUrl) || "/images/card/card-img-sm-1.png";
   const isTokenMode = inputMode === "token";
 
+  const { slippageTolerance } = useUserStore();
+
   const quote = useQuery({
     queryKey: ["quoteBuy", token.address, debouncedAmount, token.graduated, inputMode],
     queryKeyHashFn: hashFn,
-    queryFn: async () => {
+    queryFn: async (): Promise<{ ethIn?: bigint; ethNet: bigint; tokensOut: bigint }> => {
       if (isTokenMode) {
-        const result = token.graduated
-          ? await quoteDexBuyForTokens(token, debouncedAmount)
-          : await quoteBuyForTokens(token, debouncedAmount);
-        return { ethIn: result.ethIn, tokensOut: result.tokensOut };
+        if (token.graduated) {
+          const r = await quoteDexBuyForTokens(token, debouncedAmount);
+          return { ethIn: r.ethIn, ethNet: r.ethIn, tokensOut: r.tokensOut };
+        }
+        const r = await quoteBuyForTokens(token, debouncedAmount);
+        return { ethIn: r.ethIn, ethNet: r.ethInNet, tokensOut: r.tokensOut };
       }
-      const result = token.graduated
-        ? await quoteDexBuy(token, debouncedAmount).then((r) => ({ tokensOut: r.tokensOut }))
-        : await quoteBuy(token, debouncedAmount);
-      return { ethIn: undefined as bigint | undefined, tokensOut: result.tokensOut };
+      if (token.graduated) {
+        const r = await quoteDexBuy(token, debouncedAmount);
+        return { ethIn: undefined, ethNet: parseEther(debouncedAmount), tokensOut: r.tokensOut };
+      }
+      const r = await quoteBuy(token, debouncedAmount);
+      return { ethIn: undefined, ethNet: r.ethInNet, tokensOut: r.tokensOut };
     },
     enabled: !!token.address && !!debouncedAmount,
+    // The displayed figure is the slippage anchor, so it must not go stale while
+    // the user reads it. `staleTime: 0` overrides the client-wide 60 s default in
+    // app/get-query-client.ts. The interval stops firing while the tab is
+    // unfocused (refetchIntervalInBackground defaults to false) and that client
+    // also sets refetchOnWindowFocus: false — so a backgrounded tab is caught by
+    // the QUOTE_MAX_AGE_MS check in the mutation, not by a refetch on return.
+    staleTime: 0,
+    refetchInterval: QUOTE_REFRESH_MS,
   });
+
+  /** The quote on screen belongs to `debouncedAmount`; it only anchors `amount` when they agree. */
+  const quoteReady = !!quote.data && debouncedAmount === amount;
+
+  const minReceived = useMemo(
+    () =>
+      isTokenMode || !quote.data
+        ? undefined
+        : applySlippage(quote.data.tokensOut, "min", slippageTolerance),
+    [isTokenMode, quote.data, slippageTolerance],
+  );
+
+  const maxCost = useMemo(
+    () =>
+      !isTokenMode || quote.data?.ethIn === undefined
+        ? undefined
+        : applySlippage(quote.data.ethIn, "max", slippageTolerance),
+    [isTokenMode, quote.data, slippageTolerance],
+  );
+
+  const impactBps = useMemo(
+    () =>
+      quote.data
+        ? priceImpactBps(quote.data.ethNet, quote.data.tokensOut, BigInt(token.currentPriceX18))
+        : undefined,
+    [quote.data, token.currentPriceX18],
+  );
 
   const ethCost = useMemo(() => {
     if (isTokenMode) {
-      return quote.data?.ethIn !== undefined ? formatEther(quote.data.ethIn) : undefined;
+      return maxCost !== undefined ? formatEther(maxCost) : undefined;
     }
     return amount || undefined;
-  }, [isTokenMode, quote.data?.ethIn, amount]);
+  }, [isTokenMode, maxCost, amount]);
 
   const insufficientAmount = useMemo(() => {
     if (!ethCost || !balance.data) return false;
@@ -74,16 +122,26 @@ export function TokenBuyForm() {
   }, [ethCost, balance.data]);
 
   const buyMutation = useMutation({
-    mutationFn: () => {
-      if (isTokenMode) {
-        return token.graduated
-          ? dexBuyTokenForTokens(token, amount)
-          : buyTokenForTokens(token, amount);
+    mutationFn: async () => {
+      const q = quote.data;
+      if (!q || debouncedAmount !== amount) {
+        throw new Error("Quote not ready — wait a moment and try again");
       }
-      return token.graduated ? dexBuyToken(token, amount) : buyToken(token, amount);
+      if (isQuoteStale(quote.dataUpdatedAt)) {
+        void quote.refetch();
+        throw new Error("Quote expired — review the refreshed amount and try again");
+      }
+      if (isTokenMode) {
+        if (q.ethIn === undefined) throw new Error("Quote not ready — wait a moment and try again");
+        return token.graduated
+          ? dexBuyTokenForTokens(token, amount, q.ethIn)
+          : buyTokenForTokens(token, amount, q.ethIn);
+      }
+      return token.graduated
+        ? dexBuyToken(token, amount, q.tokensOut)
+        : buyToken(token, amount, q.tokensOut);
     },
-    onSuccess: (hash) => {
-      if (!hash) return;
+    onSuccess: () => {
       setAmount("");
       toast.success("Buy confirmed");
       void queryClient.invalidateQueries({ queryKey: ["balance", account.address, chain.id] });
@@ -103,11 +161,6 @@ export function TokenBuyForm() {
     setInputMode((mode) => (mode === "native" ? "token" : "native"));
     setAmount("");
   };
-
-  const expectedTokensOut =
-    !isTokenMode && quote.data?.tokensOut !== undefined
-      ? formatEther(quote.data.tokensOut)
-      : undefined;
 
   const submitLabel = account.address ? (
     buyMutation.isPending ? (
@@ -131,22 +184,27 @@ export function TokenBuyForm() {
       amountPresets={isTokenMode ? undefined : [...AMOUNT_PRESETS]}
       onSwitchInput={onSwitchInput}
       onSubmit={onSubmit}
-      submitDisabled={buyMutation.isPending || insufficientAmount || !amount}
+      submitDisabled={buyMutation.isPending || insufficientAmount || !amount || !quoteReady}
       submitLabel={submitLabel}
       quoteLoading={quote.isLoading}
       quoteText={
-        isTokenMode
-          ? ethCost && (
-              <span>
-                Cost: {formatNumber(ethCost, { maximumFractionDigits: 6 })} {nativeSymbol}
-              </span>
-            )
-          : expectedTokensOut && (
-              <span>
-                You will receive: {formatNumber(expectedTokensOut, { maximumFractionDigits: 6 })}{" "}
-                {token.symbol}
-              </span>
-            )
+        quote.data && (
+          <>
+            <span className="block">
+              {isTokenMode
+                ? `Cost: ${formatNumber(formatEther(quote.data.ethIn ?? 0n), { maximumFractionDigits: 6 })} ${nativeSymbol}`
+                : `You will receive: ${formatNumber(formatEther(quote.data.tokensOut), { maximumFractionDigits: 6 })} ${token.symbol}`}
+            </span>
+            <span className="block">
+              {isTokenMode
+                ? `Maximum cost: ${formatNumber(formatEther(maxCost ?? 0n), { maximumFractionDigits: 6 })} ${nativeSymbol}`
+                : `Minimum received: ${formatNumber(formatEther(minReceived ?? 0n), { maximumFractionDigits: 6 })} ${token.symbol}`}
+            </span>
+            {impactBps !== undefined && (
+              <span className="block">Price impact: {(impactBps / 100).toFixed(2)}%</span>
+            )}
+          </>
+        )
       }
     />
   );

@@ -149,3 +149,54 @@ export function applySlippage(
 export function deadlineFromNow(txDeadlineMinutes: number): bigint {
   return BigInt(Math.floor(Date.now() / 1000) + clampDeadline(txDeadlineMinutes) * 60);
 }
+
+// --- quote freshness & price impact --------------------------------------
+// The minimum a trade enforces on chain must be derived from the quote the user
+// READ, not from a re-quote taken after they clicked — otherwise the tolerance
+// only covers the milliseconds inside our own mutation, and the number on
+// screen guarantees nothing. That anchoring is only safe while the displayed
+// quote is fresh, so the forms refetch it every QUOTE_REFRESH_MS and refuse to
+// sign one older than QUOTE_MAX_AGE_MS.
+
+/** How often a displayed quote is refetched while its form is visible (ms). */
+export const QUOTE_REFRESH_MS = 10_000;
+
+/** Oldest displayed quote that may still be signed (ms). */
+export const QUOTE_MAX_AGE_MS = 30_000;
+
+/**
+ * True when a quote fetched at `quotedAtMs` is too old to sign. TanStack
+ * Query's `dataUpdatedAt` is `0` before the first successful fetch, which
+ * counts as stale.
+ */
+export function isQuoteStale(
+  quotedAtMs: number,
+  nowMs: number = Date.now(),
+  maxAgeMs: number = QUOTE_MAX_AGE_MS
+): boolean {
+  if (!Number.isFinite(quotedAtMs) || quotedAtMs <= 0) return true;
+  return nowMs - quotedAtMs > maxAgeMs;
+}
+
+/**
+ * Absolute deviation of a trade's effective execution price from the token's
+ * spot price, in basis points. `spotPriceX18` is `token.currentPriceX18`
+ * (native per token, 1e18-scaled), which the indexer maintains for curve trades
+ * and DEX swaps alike. Returns `undefined` when the ratio is undefined.
+ *
+ * Informational only — nothing on chain enforces it. Call sites pass the
+ * *curve-side* native amount, i.e. the amount that actually moved the reserves:
+ * `ethInNet` on a buy, `ethOutNet + fee` on a sell. The Uniswap router exposes
+ * no equivalent split, so the DEX figure also carries the router's 0.3%.
+ */
+export function priceImpactBps(
+  ethWei: bigint,
+  tokenWei: bigint,
+  spotPriceX18: bigint
+): number | undefined {
+  if (ethWei < 0n || tokenWei <= 0n || spotPriceX18 <= 0n) return undefined;
+  const executionX18 = (ethWei * 10n ** 18n) / tokenWei;
+  const diff =
+    executionX18 > spotPriceX18 ? executionX18 - spotPriceX18 : spotPriceX18 - executionX18;
+  return Number((diff * 10_000n) / spotPriceX18);
+}
