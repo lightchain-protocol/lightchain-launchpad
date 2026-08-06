@@ -9,22 +9,12 @@ import { Loader2 } from "lucide-react";
 import rankingQuery from "@/queries/rankingQuery";
 import dayjs from "@/lib/dayjs";
 import { ipfsToHttp, weiToNative } from "@/lib/ipfs";
-import { formatNative } from "@/lib/utils";
-import useCurrentChain from "@/hooks/useCurrentChain";
+import { formatNumber } from "@/lib/utils";
+import useStore from "@/store";
 import type { TokenListItem } from "@/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@lcai/ui/components/table";
 
-function RankingRow({
-  item,
-  rank,
-  marketCapNative,
-  nativeSymbol,
-}: {
-  item: TokenListItem;
-  rank: number;
-  marketCapNative: number;
-  nativeSymbol: string;
-}) {
+function RankingRow({ item, rank, marketCapUSD }: { item: TokenListItem; rank: number; marketCapUSD: number }) {
   // const bondingPct = Math.min(100, item.progressBps / 100);
   const imageUrl = ipfsToHttp(item.metadata.imageUrl);
 
@@ -43,13 +33,13 @@ function RankingRow({
           </Link>
         </div>
       </TableCell>
-      <TableCell className="font-medium">{formatNative(marketCapNative, nativeSymbol)}</TableCell>
+      <TableCell className="font-medium">${formatNumber(marketCapUSD)}</TableCell>
     </TableRow>
   );
 }
 
 export function RankingTable() {
-  const nativeSymbol = useCurrentChain().nativeCurrency.symbol;
+  const { nativePrice } = useStore();
   const { data: tokens, isLoading, isError, dataUpdatedAt } = useQuery(rankingQuery());
 
   const lastUpdated = useMemo(
@@ -88,8 +78,7 @@ export function RankingTable() {
                     key={item.address}
                     item={item}
                     rank={index + 1}
-                    marketCapNative={weiToNative(item.marketCap)}
-                    nativeSymbol={nativeSymbol}
+                    marketCapUSD={weiToNative(item.marketCap) * nativePrice}
                   />
                 ))}
               </TableBody>
