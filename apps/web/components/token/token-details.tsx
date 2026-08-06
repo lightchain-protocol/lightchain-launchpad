@@ -15,7 +15,7 @@ import { TokenTradeTable } from "@/components/token/token-trade-table";
 import { $http } from "@/lib/http";
 import dayjs from "@/lib/dayjs";
 import { ipfsToHttp, weiToNative } from "@/lib/ipfs";
-import { formatNumber, formatUsd, normalizeTokenAddress } from "@/lib/utils";
+import { formatNumber, formatPrice, formatUsd, formatUsdPrice, normalizeTokenAddress } from "@/lib/utils";
 import tokenQuery from "@/queries/tokenQuery";
 import useCurrentChain from "@/hooks/useCurrentChain";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -189,7 +189,7 @@ export function TokenDetails() {
     queryFn: () => $http.$get<Paginated<Trade>>(`/tokens/${address}/trades`).then((res) => res.data),
   });
 
-  const priceUSD = formatUsd(token.priceNative, nativePrice, { maximumFractionDigits: 8 });
+  const priceUSD = formatUsdPrice(token.priceNative, nativePrice);
   const marketCapUSD = formatUsd(weiToNative(token.marketCap), nativePrice);
   const liquidityUSD = formatUsd(weiToNative(token.virtualEthReserve), nativePrice);
   const volume24hNative = weiToNative(token.volume24h);
@@ -346,7 +346,7 @@ export function TokenDetails() {
       </div>
       <div className="shrink-0 text-right">
         <p className={cn("font-bold tracking-tight tabular-nums", opts?.compact ? "text-base" : "text-xl md:text-3xl")}>
-          {formatNumber(token.priceNative, { maximumFractionDigits: 10 })}
+          {formatPrice(token.priceNative, 6)}
           <span className="ml-1 text-sm font-semibold text-muted-foreground">{nativeSymbol}</span>
         </p>
         <p className="text-xs text-muted-foreground tabular-nums">

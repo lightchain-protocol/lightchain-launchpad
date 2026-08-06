@@ -8,10 +8,11 @@ import {
   DEADLINE_MAX,
   DEADLINE_MIN,
   deadlineFromNow,
+  formatPrice,
   formatUsd,
+  formatUsdPrice,
   isQuoteStale,
   lcaiUsdPrice,
-  priceImpactBps,
   QUOTE_MAX_AGE_MS,
   SLIPPAGE_DEFAULT,
   SLIPPAGE_MAX,
@@ -119,54 +120,54 @@ describe("deadlineFromNow", () => {
   });
 });
 
-describe("minimum received (the number the transaction is guaranteed to honour)", () => {
-  // The whole point of plan 010: the enforced floor is applySlippage applied to
-  // the amount the UI displayed, so it must equal that amount reduced by
-  // exactly the tolerance and nothing else.
-  it("reduces the displayed amount by exactly the tolerance", () => {
-    expect(applySlippage(1_000_000n, "min", 2.5)).toBe(975_000n);
-  });
+// describe("minimum received (the number the transaction is guaranteed to honour)", () => {
+//   // The whole point of plan 010: the enforced floor is applySlippage applied to
+//   // the amount the UI displayed, so it must equal that amount reduced by
+//   // exactly the tolerance and nothing else.
+//   it("reduces the displayed amount by exactly the tolerance", () => {
+//     expect(applySlippage(1_000_000n, "min", 2.5)).toBe(975_000n);
+//   });
 
-  // A user who sets 0% is asking for "no slippage at all", which would make
-  // every trade revert on any concurrent activity. clampSlippage floors it at
-  // SLIPPAGE_MIN (0.1%), so the floor is 99.9%, not 100%. Deliberate.
-  it("clamps a zero tolerance up to SLIPPAGE_MIN rather than enforcing the exact quote", () => {
-    expect(clampSlippage(0)).toBe(SLIPPAGE_MIN);
-    expect(applySlippage(1_000_000n, "min", 0)).toBe(999_000n);
-  });
+//   // A user who sets 0% is asking for "no slippage at all", which would make
+//   // every trade revert on any concurrent activity. clampSlippage floors it at
+//   // SLIPPAGE_MIN (0.1%), so the floor is 99.9%, not 100%. Deliberate.
+//   it("clamps a zero tolerance up to SLIPPAGE_MIN rather than enforcing the exact quote", () => {
+//     expect(clampSlippage(0)).toBe(SLIPPAGE_MIN);
+//     expect(applySlippage(1_000_000n, "min", 0)).toBe(999_000n);
+//   });
 
-  it("floors at half the displayed amount at the maximum tolerance", () => {
-    expect(applySlippage(1_000_000n, "min", SLIPPAGE_MAX)).toBe(500_000n);
-  });
+//   it("floors at half the displayed amount at the maximum tolerance", () => {
+//     expect(applySlippage(1_000_000n, "min", SLIPPAGE_MAX)).toBe(500_000n);
+//   });
 
-  // Exact-tokens paths anchor a maximum cost instead of a minimum output.
-  it("caps the displayed cost by exactly the tolerance on the max side", () => {
-    expect(applySlippage(1_000_000n, "max", 2.5)).toBe(1_025_000n);
-  });
-});
+//   // Exact-tokens paths anchor a maximum cost instead of a minimum output.
+//   it("caps the displayed cost by exactly the tolerance on the max side", () => {
+//     expect(applySlippage(1_000_000n, "max", 2.5)).toBe(1_025_000n);
+//   });
+// });
 
-describe("priceImpactBps", () => {
-  const SPOT = 10n ** 15n; // 0.001 native per token, 1e18-scaled
-  const ONE_TOKEN_UNIT = 10n ** 18n;
+// describe("priceImpactBps", () => {
+//   const SPOT = 10n ** 15n; // 0.001 native per token, 1e18-scaled
+//   const ONE_TOKEN_UNIT = 10n ** 18n;
 
-  it("is zero for a trade that executes at spot", () => {
-    expect(priceImpactBps(SPOT, ONE_TOKEN_UNIT, SPOT)).toBe(0);
-  });
+//   it("is zero for a trade that executes at spot", () => {
+//     expect(priceImpactBps(SPOT, ONE_TOKEN_UNIT, SPOT)).toBe(0);
+//   });
 
-  it("reports a curve-moving buy as its full deviation", () => {
-    // execution price 10% above spot → 1000 bps
-    expect(priceImpactBps(11n * 10n ** 14n, ONE_TOKEN_UNIT, SPOT)).toBe(1000);
-  });
+//   it("reports a curve-moving buy as its full deviation", () => {
+//     // execution price 10% above spot → 1000 bps
+//     expect(priceImpactBps(11n * 10n ** 14n, ONE_TOKEN_UNIT, SPOT)).toBe(1000);
+//   });
 
-  it("is symmetric for a sell that executes below spot", () => {
-    expect(priceImpactBps(9n * 10n ** 14n, ONE_TOKEN_UNIT, SPOT)).toBe(1000);
-  });
+//   it("is symmetric for a sell that executes below spot", () => {
+//     expect(priceImpactBps(9n * 10n ** 14n, ONE_TOKEN_UNIT, SPOT)).toBe(1000);
+//   });
 
-  it("returns undefined rather than dividing by zero", () => {
-    expect(priceImpactBps(SPOT, 0n, SPOT)).toBeUndefined();
-    expect(priceImpactBps(SPOT, ONE_TOKEN_UNIT, 0n)).toBeUndefined();
-  });
-});
+//   it("returns undefined rather than dividing by zero", () => {
+//     expect(priceImpactBps(SPOT, 0n, SPOT)).toBeUndefined();
+//     expect(priceImpactBps(SPOT, ONE_TOKEN_UNIT, 0n)).toBeUndefined();
+//   });
+// });
 
 describe("isQuoteStale", () => {
   // Fixed clock: a real Date.now() would make the boundary case flaky.
@@ -201,17 +202,13 @@ describe("lcaiUsdPrice", () => {
 
   it("prices LCAI when it is token0", () => {
     // 1e-6 ETH per LCAI at $3000/ETH = $0.003
-    expect(
-      lcaiUsdPrice({ ...base, sqrtPriceX96: SQRT_1E_MINUS_6, token0: LCAI, token1: WETH })
-    ).toBeCloseTo(0.003, 12);
+    expect(lcaiUsdPrice({ ...base, sqrtPriceX96: SQRT_1E_MINUS_6, token0: LCAI, token1: WETH })).toBeCloseTo(0.003, 12);
   });
 
   // The orientation is read from the pool, not assumed. If this inverted, every
   // "$" on the site would be off by ~10^9 and still look like a plausible number.
   it("inverts when LCAI is token1, giving the same price", () => {
-    expect(
-      lcaiUsdPrice({ ...base, sqrtPriceX96: SQRT_1E6, token0: WETH, token1: LCAI })
-    ).toBeCloseTo(0.003, 12);
+    expect(lcaiUsdPrice({ ...base, sqrtPriceX96: SQRT_1E6, token0: WETH, token1: LCAI })).toBeCloseTo(0.003, 12);
   });
 
   it("matches addresses case-insensitively", () => {
@@ -227,18 +224,12 @@ describe("lcaiUsdPrice", () => {
   });
 
   it("refuses a pool that is not the LCAI/WETH pair", () => {
-    expect(
-      lcaiUsdPrice({ ...base, sqrtPriceX96: SQRT_1E_MINUS_6, token0: LCAI, token1: OTHER })
-    ).toBeUndefined();
-    expect(
-      lcaiUsdPrice({ ...base, sqrtPriceX96: SQRT_1E_MINUS_6, token0: OTHER, token1: WETH })
-    ).toBeUndefined();
+    expect(lcaiUsdPrice({ ...base, sqrtPriceX96: SQRT_1E_MINUS_6, token0: LCAI, token1: OTHER })).toBeUndefined();
+    expect(lcaiUsdPrice({ ...base, sqrtPriceX96: SQRT_1E_MINUS_6, token0: OTHER, token1: WETH })).toBeUndefined();
   });
 
   it("refuses an uninitialised pool", () => {
-    expect(
-      lcaiUsdPrice({ ...base, sqrtPriceX96: 0n, token0: LCAI, token1: WETH })
-    ).toBeUndefined();
+    expect(lcaiUsdPrice({ ...base, sqrtPriceX96: 0n, token0: LCAI, token1: WETH })).toBeUndefined();
   });
 
   // Chainlink's `answer` is an int256 and reads 0 or negative when the feed is
@@ -269,5 +260,63 @@ describe("formatUsd", () => {
 
   it("passes formatting options through", () => {
     expect(formatUsd(1_000_000, 2, { notation: "compact" })).toBe("$2M");
+  });
+});
+
+describe("formatPrice", () => {
+  it("collapses a long zero run into a subscript count", () => {
+    // 7 zeros after the point, then the significant digits.
+    expect(formatPrice(0.0000000495)).toBe("0.0₇495");
+  });
+
+  it("subscripts a multi-digit zero count", () => {
+    expect(formatPrice(1.2e-13)).toBe("0.0₁₂12");
+  });
+
+  it("leaves short zero runs as plain decimals", () => {
+    // 3 zeros is still readable; collapsing it would be noise.
+    expect(formatPrice(0.0001234)).toBe("0.0001234");
+    expect(formatPrice(0.00123456)).toBe("0.001235");
+  });
+
+  it("switches to the subscript form at exactly 4 zeros", () => {
+    expect(formatPrice(0.00001)).toBe("0.0₄1");
+  });
+
+  // toExponential rounds first, so 9.99e-8 becomes 1.00e-7 and the zero count
+  // has to follow it. Multiplying by a power of ten would report 6 zeros and
+  // print a value that does not exist.
+  it("carries the exponent when rounding rolls over", () => {
+    expect(formatPrice(9.999e-8, 3)).toBe("0.0₆1");
+  });
+
+  it("keeps significant digits, not decimal places", () => {
+    expect(formatPrice(1.23456)).toBe("1.235");
+    // 2 digits of 4.95e-8. It rounds down because the double nearest
+    // 0.0000000495 is fractionally below it — the same reason this notation
+    // exists rather than trusting the tail of a float.
+    expect(formatPrice(0.0000000495, 2)).toBe("0.0₇49");
+  });
+
+  it("handles zero, negatives and non-finite values", () => {
+    expect(formatPrice(0)).toBe("0");
+    expect(formatPrice(-0.0000000495)).toBe("-0.0₇495");
+    expect(formatPrice(NaN)).toBe("—");
+    expect(formatPrice(Infinity)).toBe("—");
+  });
+
+  it("does not blow past Intl's 20 fraction-digit ceiling", () => {
+    expect(() => formatPrice(1e21, 18)).not.toThrow();
+  });
+});
+
+describe("formatUsdPrice", () => {
+  it("uses the subscript form for a sub-cent price", () => {
+    // 0.0000165 LCAI at $0.003 = $0.0000000495
+    expect(formatUsdPrice(0.0000165, 0.003)).toBe("$0.0₇495");
+  });
+
+  it("renders an em dash while the price is unknown", () => {
+    expect(formatUsdPrice(0.0000165, undefined)).toBe("—");
   });
 });

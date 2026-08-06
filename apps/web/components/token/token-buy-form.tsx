@@ -18,13 +18,7 @@ import useTradeFunctions from "@/hooks/useTradeFunctions";
 import { useDebouncedValue } from "@/hooks/useDebounce";
 import { ipfsToHttp } from "@/lib/ipfs";
 import tokenQuery from "@/queries/tokenQuery";
-import {
-  applySlippage,
-  formatNumber,
-  isQuoteStale,
-  priceImpactBps,
-  QUOTE_REFRESH_MS,
-} from "@/lib/utils";
+import { applySlippage, formatNumber, isQuoteStale, priceImpactBps, QUOTE_REFRESH_MS } from "@/lib/utils";
 import useUserStore from "@/store/user-store";
 
 const AMOUNT_PRESETS = [0.1, 0.5, 1] as const;
@@ -86,11 +80,8 @@ export function TokenBuyForm() {
   const quoteReady = !!quote.data && debouncedAmount === amount;
 
   const minReceived = useMemo(
-    () =>
-      isTokenMode || !quote.data
-        ? undefined
-        : applySlippage(quote.data.tokensOut, "min", slippageTolerance),
-    [isTokenMode, quote.data, slippageTolerance],
+    () => (isTokenMode || !quote.data ? undefined : applySlippage(quote.data.tokensOut, "min", slippageTolerance)),
+    [isTokenMode, quote.data, slippageTolerance]
   );
 
   const maxCost = useMemo(
@@ -98,15 +89,13 @@ export function TokenBuyForm() {
       !isTokenMode || quote.data?.ethIn === undefined
         ? undefined
         : applySlippage(quote.data.ethIn, "max", slippageTolerance),
-    [isTokenMode, quote.data, slippageTolerance],
+    [isTokenMode, quote.data, slippageTolerance]
   );
 
   const impactBps = useMemo(
     () =>
-      quote.data
-        ? priceImpactBps(quote.data.ethNet, quote.data.tokensOut, BigInt(token.currentPriceX18))
-        : undefined,
-    [quote.data, token.currentPriceX18],
+      quote.data ? priceImpactBps(quote.data.ethNet, quote.data.tokensOut, BigInt(token.currentPriceX18)) : undefined,
+    [quote.data, token.currentPriceX18]
   );
 
   const ethCost = useMemo(() => {
@@ -137,9 +126,7 @@ export function TokenBuyForm() {
           ? dexBuyTokenForTokens(token, amount, q.ethIn)
           : buyTokenForTokens(token, amount, q.ethIn);
       }
-      return token.graduated
-        ? dexBuyToken(token, amount, q.tokensOut)
-        : buyToken(token, amount, q.tokensOut);
+      return token.graduated ? dexBuyToken(token, amount, q.tokensOut) : buyToken(token, amount, q.tokensOut);
     },
     onSuccess: () => {
       setAmount("");
@@ -195,14 +182,14 @@ export function TokenBuyForm() {
                 ? `Cost: ${formatNumber(formatEther(quote.data.ethIn ?? 0n), { maximumFractionDigits: 6 })} ${nativeSymbol}`
                 : `You will receive: ${formatNumber(formatEther(quote.data.tokensOut), { maximumFractionDigits: 6 })} ${token.symbol}`}
             </span>
-            <span className="block">
+            {/* <span className="block">
               {isTokenMode
                 ? `Maximum cost: ${formatNumber(formatEther(maxCost ?? 0n), { maximumFractionDigits: 6 })} ${nativeSymbol}`
                 : `Minimum received: ${formatNumber(formatEther(minReceived ?? 0n), { maximumFractionDigits: 6 })} ${token.symbol}`}
-            </span>
-            {impactBps !== undefined && (
+            </span> */}
+            {/* {impactBps !== undefined && (
               <span className="block">Price impact: {(impactBps / 100).toFixed(2)}%</span>
-            )}
+            )} */}
           </>
         )
       }

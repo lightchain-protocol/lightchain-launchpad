@@ -231,6 +231,11 @@ export function lcaiUsdPrice(args: {
   return args.ethUsd * ethPerLcai;
 }
 
+const usdAmount = (nativeAmount: number, priceUsd: number | undefined): number | undefined =>
+  priceUsd === undefined || !Number.isFinite(priceUsd) || !Number.isFinite(nativeAmount)
+    ? undefined
+    : nativeAmount * priceUsd;
+
 /**
  * USD text for a native (LCAI) amount, or an em dash while the price is
  * unknown. `priceUsd` is `undefined` until the mainnet read lands, and stays
@@ -242,7 +247,60 @@ export function formatUsd(
   priceUsd: number | undefined,
   options?: Intl.NumberFormatOptions
 ): string {
-  if (priceUsd === undefined || !Number.isFinite(priceUsd)) return "—";
-  if (!Number.isFinite(nativeAmount)) return "—";
-  return `$${formatNumber(nativeAmount * priceUsd, options)}`;
+  const usd = usdAmount(nativeAmount, priceUsd);
+  return usd === undefined ? "—" : `$${formatNumber(usd, options)}`;
+}
+
+/** `formatUsd` for a per-token price, so sub-cent values get the compact form. */
+export function formatUsdPrice(nativeAmount: number, priceUsd: number | undefined): string {
+  const usd = usdAmount(nativeAmount, priceUsd);
+  return usd === undefined ? "—" : `$${formatPrice(usd)}`;
+}
+
+// --- small-price notation -------------------------------------------------
+// A memecoin priced at 0.0000000495 is unreadable in full and misleading when
+// truncated — `maximumFractionDigits: 8` renders it as "0". The exchange
+// convention collapses the zero run into a subscript count, so the same value
+// reads as 0.0₇495: "0.0", seven zeros, then the significant digits.
+
+const SUBSCRIPT_DIGITS = "₀₁₂₃₄₅₆₇₈₉";
+
+/** Shortest zero run worth collapsing. Below this, plain decimals read fine. */
+const SUBSCRIPT_MIN_ZEROS = 4;
+
+const toSubscript = (n: number): string =>
+  String(n).replace(/\d/g, (d) => SUBSCRIPT_DIGITS[Number(d)]!);
+
+/**
+ * Format a price, collapsing a long run of leading zeros into a subscript:
+ * `0.0000000495` -> `0.0₇495`, `0.00123456` -> `0.001235`.
+ *
+ * `significantDigits` counts the meaningful digits kept, not decimal places —
+ * which is the point, since a price's magnitude is not known in advance.
+ *
+ * Built on `toExponential` rather than multiplying by a power of ten: the
+ * float multiply reintroduces the very precision noise this exists to hide,
+ * and `toExponential` carries the exponent correctly when rounding rolls
+ * 9.99e-8 up to 1.00e-7.
+ */
+export function formatPrice(value: number, significantDigits = 4): string {
+  if (!Number.isFinite(value)) return "—";
+  if (value === 0) return "0";
+
+  const sign = value < 0 ? "-" : "";
+  const abs = Math.abs(value);
+
+  const [mantissa = "", expPart = "0"] = abs.toExponential(significantDigits - 1).split("e");
+  const exponent = Number(expPart);
+  const zeros = -exponent - 1;
+
+  if (zeros < SUBSCRIPT_MIN_ZEROS) {
+    // Intl caps maximumFractionDigits at 20; `zeros` is bounded here so the
+    // clamp only ever matters for large values, where 0 is what we want.
+    const maxFractionDigits = Math.min(20, Math.max(0, significantDigits - 1 - exponent));
+    return sign + formatNumber(abs, { maximumFractionDigits: maxFractionDigits });
+  }
+
+  const digits = mantissa.replace(".", "").replace(/0+$/, "") || "0";
+  return `${sign}0.0${toSubscript(zeros)}${digits}`;
 }

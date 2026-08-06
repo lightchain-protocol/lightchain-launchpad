@@ -18,13 +18,7 @@ import useTradeFunctions from "@/hooks/useTradeFunctions";
 import { useDebouncedValue } from "@/hooks/useDebounce";
 import { ipfsToHttp } from "@/lib/ipfs";
 import tokenQuery from "@/queries/tokenQuery";
-import {
-  applySlippage,
-  formatNumber,
-  isQuoteStale,
-  priceImpactBps,
-  QUOTE_REFRESH_MS,
-} from "@/lib/utils";
+import { applySlippage, formatNumber, isQuoteStale, priceImpactBps, QUOTE_REFRESH_MS } from "@/lib/utils";
 import useUserStore from "@/store/user-store";
 
 const PERCENTAGE_PRESETS = [25, 50, 75, 100] as const;
@@ -69,19 +63,15 @@ export function TokenSellForm() {
 
   const minReceived = useMemo(
     () => (quote.data ? applySlippage(quote.data.ethOutNet, "min", slippageTolerance) : undefined),
-    [quote.data, slippageTolerance],
+    [quote.data, slippageTolerance]
   );
 
   const impactBps = useMemo(
     () =>
       quote.data && debouncedTokenIn
-        ? priceImpactBps(
-            quote.data.ethGross,
-            parseEther(debouncedTokenIn),
-            BigInt(token.currentPriceX18),
-          )
+        ? priceImpactBps(quote.data.ethGross, parseEther(debouncedTokenIn), BigInt(token.currentPriceX18))
         : undefined,
-    [quote.data, debouncedTokenIn, token.currentPriceX18],
+    [quote.data, debouncedTokenIn, token.currentPriceX18]
   );
 
   const insufficientAmount = useMemo(() => {
@@ -99,9 +89,7 @@ export function TokenSellForm() {
         void quote.refetch();
         throw new Error("Quote expired — review the refreshed amount and try again");
       }
-      return token.graduated
-        ? dexSellToken(token, tokenIn, q.ethOutNet)
-        : sellToken(token, tokenIn, q.ethOutNet);
+      return token.graduated ? dexSellToken(token, tokenIn, q.ethOutNet) : sellToken(token, tokenIn, q.ethOutNet);
     },
     onSuccess: () => {
       setTokenIn("");
@@ -157,18 +145,17 @@ export function TokenSellForm() {
         quote.data && (
           <>
             <span className="block">
-              You will receive:{" "}
-              {formatNumber(formatEther(quote.data.ethOutNet), { maximumFractionDigits: 6 })}{" "}
+              You will receive: {formatNumber(formatEther(quote.data.ethOutNet), { maximumFractionDigits: 6 })}{" "}
               {chain.nativeCurrency.symbol}
             </span>
-            <span className="block">
+            {/* <span className="block">
               Minimum received:{" "}
               {formatNumber(formatEther(minReceived ?? 0n), { maximumFractionDigits: 6 })}{" "}
               {chain.nativeCurrency.symbol}
-            </span>
-            {impactBps !== undefined && (
+            </span> */}
+            {/* {impactBps !== undefined && (
               <span className="block">Price impact: {(impactBps / 100).toFixed(2)}%</span>
-            )}
+            )} */}
           </>
         )
       }

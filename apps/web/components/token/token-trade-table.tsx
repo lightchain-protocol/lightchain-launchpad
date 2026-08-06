@@ -7,7 +7,8 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import dayjs from "@/lib/dayjs";
 import useCurrentChain from "@/hooks/useCurrentChain";
 import tokenQuery from "@/queries/tokenQuery";
-import { formatBigNumber, formatNumber } from "@/lib/utils";
+import useNativePrice from "@/hooks/useNativePrice";
+import { formatBigNumber, formatPrice, formatUsdPrice } from "@/lib/utils";
 import type { Trade } from "@/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@lcai/ui/components/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@lcai/ui/components/tooltip";
@@ -17,6 +18,8 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
   const { address } = useParams<{ address: string }>();
   const { data: token } = useSuspenseQuery(tokenQuery(address));
   const explorer = chain.blockExplorers?.default.url;
+  const nativePrice = useNativePrice();
+  const nativeSymbol = chain.nativeCurrency.symbol;
 
   return (
     <Table>
@@ -24,8 +27,9 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
         <TableRow>
           <TableHead>Account</TableHead>
           <TableHead>Type</TableHead>
-          <TableHead>{chain.nativeCurrency.symbol}</TableHead>
+          <TableHead>{nativeSymbol}</TableHead>
           <TableHead>{token.symbol}</TableHead>
+          <TableHead>Price</TableHead>
           <TableHead>Date</TableHead>
           <TableHead>Transaction</TableHead>
         </TableRow>
@@ -33,7 +37,7 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
       <TableBody>
         {!trades?.length ? (
           <TableRow>
-            <TableCell colSpan={6} className="py-10 text-center font-normal">
+            <TableCell colSpan={7} className="py-10 text-center font-normal">
               No trades yet
             </TableCell>
           </TableRow>
@@ -83,6 +87,19 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
                   </TooltipTrigger>
                   <TooltipContent sideOffset={4}>
                     {formatBigNumber(trade.tokenAmount, { maximumFractionDigits: 8 })}
+                  </TooltipContent>
+                </Tooltip>
+              </TableCell>
+              <TableCell className="tabular-nums">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="cursor-default">{formatPrice(trade.priceNative)}</span>
+                  </TooltipTrigger>
+                  <TooltipContent sideOffset={4}>
+                    <span className="block">
+                      {formatPrice(trade.priceNative, 8)} {nativeSymbol} per {token.symbol}
+                    </span>
+                    <span className="block">{formatUsdPrice(trade.priceNative, nativePrice)}</span>
                   </TooltipContent>
                 </Tooltip>
               </TableCell>
