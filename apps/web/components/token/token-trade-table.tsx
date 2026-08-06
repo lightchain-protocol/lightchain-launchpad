@@ -12,6 +12,7 @@ import { formatBigNumber, formatPrice, formatUsdPrice } from "@/lib/utils";
 import type { Trade } from "@/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@lcai/ui/components/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@lcai/ui/components/tooltip";
+import { ExternalLinkIcon } from "lucide-react";
 
 export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
   const chain = useCurrentChain();
@@ -29,7 +30,6 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
           <TableHead>Type</TableHead>
           <TableHead>{nativeSymbol}</TableHead>
           <TableHead>{token.symbol}</TableHead>
-          <TableHead>Price</TableHead>
           <TableHead>Date</TableHead>
           <TableHead>Transaction</TableHead>
         </TableRow>
@@ -78,7 +78,7 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
                   </TooltipContent>
                 </Tooltip>
               </TableCell>
-              <TableCell>
+              <TableCell className={trade.isBuy ? "text-success" : "text-destructive"}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="cursor-default">
@@ -87,19 +87,6 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
                   </TooltipTrigger>
                   <TooltipContent sideOffset={4}>
                     {formatBigNumber(trade.tokenAmount, { maximumFractionDigits: 8 })}
-                  </TooltipContent>
-                </Tooltip>
-              </TableCell>
-              <TableCell className="tabular-nums">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="cursor-default">{formatPrice(trade.priceNative)}</span>
-                  </TooltipTrigger>
-                  <TooltipContent sideOffset={4}>
-                    <span className="block">
-                      {formatPrice(trade.priceNative, 8)} {nativeSymbol} per {token.symbol}
-                    </span>
-                    <span className="block">{formatUsdPrice(trade.priceNative, nativePrice)}</span>
                   </TooltipContent>
                 </Tooltip>
               </TableCell>
@@ -119,10 +106,10 @@ export function TokenTradeTable({ trades }: { trades?: Trade[] }) {
                     rel="noopener noreferrer"
                     className="hover:underline"
                   >
-                    {trade.txHash.slice(0, 12)}...
+                    {trade.txHash.slice(0, 6)}...
                   </Link>
                 ) : (
-                  <>{trade.txHash.slice(0, 12)}...</>
+                  <>{trade.txHash.slice(0, 6)}...</>
                 )}
               </TableCell>
             </TableRow>

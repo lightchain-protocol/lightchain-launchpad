@@ -25,10 +25,10 @@ function RankingRow({ item, rank, marketCapUSD }: { item: TokenListItem; rank: n
           <span className="theme-gradient text-xl font-bold">{rank}</span>
           <img
             src={imageUrl || "/images/card/card-img-sm-1.png"}
-            className="h-12 w-12 rounded-lg object-cover"
+            className="h-12 w-12 rounded-lg bg-primary/30 object-contain"
             alt={item.name}
           />
-          <Link href={`/token/${item.address}`} className="font-medium text-primary hover:underline">
+          <Link href={`/token/${item.address}`} className="font-medium hover:underline">
             {item.name} (${item.symbol})
           </Link>
         </div>

@@ -314,7 +314,7 @@ export function TokenDetails() {
           src={imageUrl}
           alt={token.name}
           className={cn(
-            "shrink-0 rounded-xl object-cover ring-1 ring-border/60",
+            "shrink-0 rounded-xl bg-primary/30 object-contain ring-1 ring-border/60",
             opts?.compact ? "size-11" : "size-14"
           )}
         />
@@ -349,9 +349,7 @@ export function TokenDetails() {
           {formatPrice(token.priceNative, 6)}
           <span className="ml-1 text-sm font-semibold text-muted-foreground">{nativeSymbol}</span>
         </p>
-        <p className="text-xs text-muted-foreground tabular-nums">
-          {priceUSD}
-        </p>
+        <p className="text-xs text-muted-foreground tabular-nums">{priceUSD}</p>
       </div>
     </div>
   );
