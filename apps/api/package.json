@@ -11,7 +11,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "lint": "echo 'no lint' && exit 0"
+    "lint": "eslint --max-warnings 5"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
@@ -33,7 +33,9 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@lcai/eslint-config": "workspace:*",
     "@types/node": "^22.10.0",
+    "eslint": "^9",
     "pino-pretty": "^13.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",

@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# This workflow only reads the repo — nothing publishes, comments, or deploys.
+permissions:
+  contents: read
+
 # Cancel superseded runs on the same ref.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -104,10 +108,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-        # Non-blocking: 1 critical + 41 high advisories exist as of 3c83931,
-        # almost all in transitive dev tooling. Flip to blocking once the
-        # runtime-reachable advisories (next, @fastify/static, ws,
-        # socket.io-parser, find-my-way, drizzle-orm) are cleared.
+        # Non-blocking. As of f9db5a6 `pnpm audit --audit-level high` reports
+        # `4 low | 57 moderate | 42 high | 2 critical` — those are path
+        # instances; deduplicated it is 1 unique critical and 38 unique high
+        # (84 unique advisories in total).
+        # Both "criticals" are the same vitest <3.2.6 advisory, reached once via
+        # apps/web and once via apps/api. It is dev-only and exploitable only
+        # while the Vitest UI server is listening, so it is NOT runtime-reachable.
+        # Flip to blocking once the runtime-reachable advisories (next,
+        # @fastify/static, ws, socket.io-parser, find-my-way, drizzle-orm) are
+        # cleared.
       - name: Audit
         run: pnpm audit --audit-level high
         continue-on-error: true
