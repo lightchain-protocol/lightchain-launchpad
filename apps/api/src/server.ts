@@ -22,7 +22,7 @@ export async function buildServer(): Promise<FastifyInstance> {
       config.NODE_ENV === "development"
         ? { level: config.LOG_LEVEL, transport: { target: "pino-pretty", options: { translateTime: "HH:MM:ss", ignore: "pid,hostname" } } }
         : { level: config.LOG_LEVEL },
-    trustProxy: true,
+    trustProxy: config.TRUST_PROXY,
     bodyLimit: 1 * 1024 * 1024,
   });
 

@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { config } from "../config.js";
 import { uploadFormSchema, buildCanonicalMetadata } from "../services/metadata-schema.js";
 import { pinFile, pinJson, pinningEnabled, PinningDisabledError } from "../services/ipfs.js";
+import { sniffImageType } from "../services/untrusted-input.js";
 
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
@@ -37,6 +38,15 @@ const plugin: FastifyPluginAsync = async (app) => {
           const buffer = await part.toBuffer();
           if ((part as { file?: { truncated?: boolean } }).file?.truncated) {
             return reply.code(413).send({ error: "image too large" });
+          }
+          // `part.mimetype` is the client's own claim. Pin only bytes that are
+          // actually the image type they say they are — otherwise the upload
+          // endpoint pins arbitrary content to the operator's Pinata account.
+          const sniffed = sniffImageType(buffer);
+          if (sniffed !== part.mimetype) {
+            return reply
+              .code(415)
+              .send({ error: `image bytes are not a valid ${part.mimetype}` });
           }
           image = { buffer, filename: part.filename || "image", mimetype: part.mimetype };
         } else {
