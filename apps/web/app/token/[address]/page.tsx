@@ -11,12 +11,17 @@ type PageProps = {
   params: Promise<{ address: string }>;
 };
 
-async function fetchToken(address: string): Promise<TokenDetail | undefined> {
+/**
+ * Returns `null` — never `undefined` — for a token the API would not serve.
+ * TanStack Query treats an `undefined` queryFn result as a bug and rejects the
+ * query, so returning it here crashes the page before `notFound()` can run.
+ */
+async function fetchToken(address: string): Promise<TokenDetail | null> {
   const response = await fetch(
     `${process.env.NEXT_PUBLIC_API_URL}/tokens/${address}`,
     { cache: "no-store" },
   );
-  if (!response.ok) return undefined;
+  if (!response.ok) return null;
   return response.json();
 }
 
