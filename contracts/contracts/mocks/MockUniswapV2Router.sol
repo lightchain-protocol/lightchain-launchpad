@@ -42,11 +42,11 @@ contract MockUniswapV2Router {
         if (rToken == 0 && rEth == 0) {
             (amountToken, amountETH) = (amountTokenDesired, msg.value);
         } else {
-            uint256 ethOptimal = (amountTokenDesired * rEth) / rToken;
+            uint256 ethOptimal = _quote(amountTokenDesired, rToken, rEth);
             if (ethOptimal <= msg.value) {
                 (amountToken, amountETH) = (amountTokenDesired, ethOptimal);
             } else {
-                (amountToken, amountETH) = ((msg.value * rToken) / rEth, msg.value);
+                (amountToken, amountETH) = (_quote(msg.value, rEth, rToken), msg.value);
             }
         }
         require(amountToken >= amountTokenMin, "INSUFFICIENT_TOKEN");
@@ -190,6 +190,14 @@ contract MockUniswapV2Router {
         (address t0,) = tokenIn < tokenOut ? (tokenIn, tokenOut) : (tokenOut, tokenIn);
         (uint256 amount0Out, uint256 amount1Out) = tokenIn == t0 ? (uint256(0), amountOut) : (amountOut, uint256(0));
         MockUniswapV2Pair(pair).swap(amount0Out, amount1Out, to, new bytes(0));
+    }
+
+    /// @dev Mirrors UniswapV2Library.quote, including its preconditions: a pair
+    ///      holding exactly one non-zero reserve makes addLiquidity revert.
+    function _quote(uint256 amountA, uint256 rA, uint256 rB) internal pure returns (uint256) {
+        require(amountA > 0, "INSUFFICIENT_AMOUNT");
+        require(rA > 0 && rB > 0, "INSUFFICIENT_LIQUIDITY");
+        return (amountA * rB) / rA;
     }
 
     function _reservesFor(address pair, address tokenAddr) internal view returns (uint256 rToken, uint256 rOther) {

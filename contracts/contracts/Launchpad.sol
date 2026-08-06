@@ -16,6 +16,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
+import {IWETH} from "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
 
 import {Token} from "./Token.sol";
 import {CurveMath} from "./lib/CurveMath.sol";
@@ -57,10 +58,6 @@ contract Launchpad is
     /// @dev Gas forwarded to the treasury on a fee push. Enough for a multisig
     ///      receive, bounded so a hostile treasury can't burn the payer's gas.
     uint256 private constant TREASURY_GAS_LIMIT = 50_000;
-
-    /// @dev Pre-seeded native up to `ethForLp / DUST_DENOM` is auto-neutralised
-    ///      at graduation; this also caps the LP shortfall it can cause.
-    uint256 private constant DUST_DENOM = 10_000; // 0.01%
 
     // ================================================================
     //  Storage — global config (snapshotted into Curve at createToken)
@@ -456,44 +453,35 @@ contract Launchpad is
 
         uint256 _lpSupply = c.lpSupply;
 
-        // Funding the pair is permissionless, so an attacker picks the ratio we'd
-        // otherwise deposit at. Dust self-heals by pre-placing part of the LP
-        // allocation at our ratio (same total into the pool); anything larger is
-        // a real capital commitment and needs graduateByOwner.
-        uint256 lpDeposit = _lpSupply;
-        uint256 slack;
+        // Funding the pair is permissionless. Until someone mints LP there is no
+        // counterparty: whatever sits in the pair is a donation nobody can pull
+        // back, so seed the pair ourselves at our own ratio and take 100% of the
+        // LP (burned below). Once LP exists both reserves are non-zero — V2 can't
+        // drain a side while MINIMUM_LIQUIDITY is locked — so the router's quote()
+        // works there, but the ratio is the incumbent's: owner decision only.
         bool degraded;
         {
             (uint112 r0, uint112 r1,) = IUniswapV2Pair(_pair).getReserves();
             degraded = (r0 != 0 || r1 != 0);
-            if (degraded) {
-                (uint256 rToken, uint256 rEth) = IUniswapV2Pair(_pair).token0() == token
-                    ? (uint256(r0), uint256(r1))
-                    : (uint256(r1), uint256(r0));
-
-                uint256 dustCap = ethForLp / DUST_DENOM;
-                if (rToken == 0 && rEth != 0 && rEth <= dustCap) {
-                    uint256 seed = Math.mulDiv(_lpSupply, rEth, ethForLp + rEth, Math.Rounding.Ceil);
-                    if (seed != 0 && seed < _lpSupply) {
-                        IERC20(token).safeTransfer(_pair, seed);
-                        IUniswapV2Pair(_pair).sync();
-                        lpDeposit = _lpSupply - seed;
-                        slack = dustCap;
-                    }
-                }
-
-                if (slack == 0 && !ownerOverride) revert PairPreSeeded();
-            }
         }
+        bool selfSeed = IUniswapV2Pair(_pair).totalSupply() == 0;
+        if (!selfSeed && !ownerOverride) revert PairPreSeeded();
 
-        uint256 minToken = ownerOverride ? minTokensToLp : lpDeposit;
-        uint256 minEth = ownerOverride ? minEthToLp : ethForLp - slack;
-
-        IERC20(token).forceApprove(address(router), lpDeposit);
-        (uint256 usedToken, uint256 usedEth,) = router.addLiquidityETH{value: ethForLp}(
-            token, lpDeposit, minToken, minEth, address(this), block.timestamp
-        );
-        IERC20(token).forceApprove(address(router), 0);
+        uint256 usedToken;
+        uint256 usedEth;
+        if (selfSeed) {
+            IERC20(token).safeTransfer(_pair, _lpSupply);
+            IWETH(weth).deposit{value: ethForLp}();
+            IERC20(weth).safeTransfer(_pair, ethForLp);
+            IUniswapV2Pair(_pair).mint(address(this));
+            (usedToken, usedEth) = (_lpSupply, ethForLp);
+        } else {
+            IERC20(token).forceApprove(address(router), _lpSupply);
+            (usedToken, usedEth,) = router.addLiquidityETH{value: ethForLp}(
+                token, _lpSupply, minTokensToLp, minEthToLp, address(this), block.timestamp
+            );
+            IERC20(token).forceApprove(address(router), 0);
+        }
 
         // burn the LP we received
         uint256 lpBal = IERC20(_pair).balanceOf(address(this));
