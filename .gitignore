@@ -22,6 +22,9 @@ typechain-types/
 *.log
 coverage/
 package-lock.json
+# …but contracts/ is outside the pnpm workspace and installs with npm.
+# `npm ci` refuses to run without a lockfile, so this one must be tracked.
+!contracts/package-lock.json
 yarn.lock
 
 
