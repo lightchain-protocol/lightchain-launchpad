@@ -8,7 +8,9 @@ import {
   DEADLINE_MAX,
   DEADLINE_MIN,
   deadlineFromNow,
+  formatUsd,
   isQuoteStale,
+  lcaiUsdPrice,
   priceImpactBps,
   QUOTE_MAX_AGE_MS,
   SLIPPAGE_DEFAULT,
@@ -182,5 +184,90 @@ describe("isQuoteStale", () => {
   // must never count as a fresh quote.
   it("treats a never-fetched quote as stale", () => {
     expect(isQuoteStale(0, NOW)).toBe(true);
+  });
+});
+
+describe("lcaiUsdPrice", () => {
+  const LCAI = "0x9ca8530ca349c966fe9ef903df17a75b8a778927";
+  const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+  const OTHER = "0x1111111111111111111111111111111111111111";
+
+  // sqrt(1e-6) * 2**96 — a pool quoting 1e-6 of token1 per token0.
+  const SQRT_1E_MINUS_6 = 79228162514264337593543950n;
+  // sqrt(1e6) * 2**96 — the same price with the tokens the other way round.
+  const SQRT_1E6 = 79228162514264337593543950336000n;
+
+  const base = { lcai: LCAI, weth: WETH, ethUsd: 3000 };
+
+  it("prices LCAI when it is token0", () => {
+    // 1e-6 ETH per LCAI at $3000/ETH = $0.003
+    expect(
+      lcaiUsdPrice({ ...base, sqrtPriceX96: SQRT_1E_MINUS_6, token0: LCAI, token1: WETH })
+    ).toBeCloseTo(0.003, 12);
+  });
+
+  // The orientation is read from the pool, not assumed. If this inverted, every
+  // "$" on the site would be off by ~10^9 and still look like a plausible number.
+  it("inverts when LCAI is token1, giving the same price", () => {
+    expect(
+      lcaiUsdPrice({ ...base, sqrtPriceX96: SQRT_1E6, token0: WETH, token1: LCAI })
+    ).toBeCloseTo(0.003, 12);
+  });
+
+  it("matches addresses case-insensitively", () => {
+    // Pools return checksummed addresses; config stores LCAI lowercased.
+    expect(
+      lcaiUsdPrice({
+        ...base,
+        sqrtPriceX96: SQRT_1E_MINUS_6,
+        token0: LCAI.toUpperCase().replace("0X", "0x"),
+        token1: WETH.toLowerCase(),
+      })
+    ).toBeCloseTo(0.003, 12);
+  });
+
+  it("refuses a pool that is not the LCAI/WETH pair", () => {
+    expect(
+      lcaiUsdPrice({ ...base, sqrtPriceX96: SQRT_1E_MINUS_6, token0: LCAI, token1: OTHER })
+    ).toBeUndefined();
+    expect(
+      lcaiUsdPrice({ ...base, sqrtPriceX96: SQRT_1E_MINUS_6, token0: OTHER, token1: WETH })
+    ).toBeUndefined();
+  });
+
+  it("refuses an uninitialised pool", () => {
+    expect(
+      lcaiUsdPrice({ ...base, sqrtPriceX96: 0n, token0: LCAI, token1: WETH })
+    ).toBeUndefined();
+  });
+
+  // Chainlink's `answer` is an int256 and reads 0 or negative when the feed is
+  // unhealthy; that must not become a $0 market cap.
+  it("refuses a non-positive ETH/USD answer", () => {
+    const args = { sqrtPriceX96: SQRT_1E_MINUS_6, token0: LCAI, token1: WETH, lcai: LCAI, weth: WETH };
+    expect(lcaiUsdPrice({ ...args, ethUsd: 0 })).toBeUndefined();
+    expect(lcaiUsdPrice({ ...args, ethUsd: -1 })).toBeUndefined();
+    expect(lcaiUsdPrice({ ...args, ethUsd: NaN })).toBeUndefined();
+  });
+});
+
+describe("formatUsd", () => {
+  // The reason this helper exists: an unknown price renders as an em dash, not
+  // as a number derived from a placeholder rate.
+  it("renders an em dash while the price is unknown", () => {
+    expect(formatUsd(1234, undefined)).toBe("—");
+    expect(formatUsd(1234, NaN)).toBe("—");
+  });
+
+  it("renders an em dash for a non-finite amount", () => {
+    expect(formatUsd(NaN, 2)).toBe("—");
+  });
+
+  it("multiplies the native amount by the price", () => {
+    expect(formatUsd(1000, 0.003)).toBe("$3");
+  });
+
+  it("passes formatting options through", () => {
+    expect(formatUsd(1_000_000, 2, { notation: "compact" })).toBe("$2M");
   });
 });

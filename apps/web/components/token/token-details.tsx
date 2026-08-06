@@ -15,12 +15,12 @@ import { TokenTradeTable } from "@/components/token/token-trade-table";
 import { $http } from "@/lib/http";
 import dayjs from "@/lib/dayjs";
 import { ipfsToHttp, weiToNative } from "@/lib/ipfs";
-import { formatNumber, normalizeTokenAddress } from "@/lib/utils";
+import { formatNumber, formatUsd, normalizeTokenAddress } from "@/lib/utils";
 import tokenQuery from "@/queries/tokenQuery";
 import useCurrentChain from "@/hooks/useCurrentChain";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useRealtimeRoom, useSocketIOEvent } from "@/hooks/useSocketIoEvent";
-import useStore from "@/store";
+import useNativePrice from "@/hooks/useNativePrice";
 import type {
   Paginated,
   Token,
@@ -172,7 +172,7 @@ function BondingCurveCard({
 
 export function TokenDetails() {
   const chain = useCurrentChain();
-  const { nativePrice } = useStore();
+  const nativePrice = useNativePrice();
   const queryClient = useQueryClient();
   const [mobileTab, setMobileTab] = useState<MobileTab>("chart");
   // Avoid mounting TradingView in a `display:none` tree (or twice) — it won't paint.
@@ -189,9 +189,9 @@ export function TokenDetails() {
     queryFn: () => $http.$get<Paginated<Trade>>(`/tokens/${address}/trades`).then((res) => res.data),
   });
 
-  const priceUSD = token.priceNative * nativePrice;
-  const marketCapUSD = weiToNative(token.marketCap) * nativePrice;
-  const liquidityUSD = weiToNative(token.virtualEthReserve) * nativePrice;
+  const priceUSD = formatUsd(token.priceNative, nativePrice, { maximumFractionDigits: 8 });
+  const marketCapUSD = formatUsd(weiToNative(token.marketCap), nativePrice);
+  const liquidityUSD = formatUsd(weiToNative(token.virtualEthReserve), nativePrice);
   const volume24hNative = weiToNative(token.volume24h);
   const fundingRaisedNative = weiToNative(token.realEthRaised);
   const fundingGoalNative = weiToNative(token.fundingGoal);
@@ -350,7 +350,7 @@ export function TokenDetails() {
           <span className="ml-1 text-sm font-semibold text-muted-foreground">{nativeSymbol}</span>
         </p>
         <p className="text-xs text-muted-foreground tabular-nums">
-          ${formatNumber(priceUSD, { maximumFractionDigits: 8 })}
+          {priceUSD}
         </p>
       </div>
     </div>
@@ -358,8 +358,8 @@ export function TokenDetails() {
 
   const statsStripDesktop = (
     <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border/60 bg-card sm:grid-cols-4">
-      <StatItem label="Market Cap" value={`$${formatNumber(marketCapUSD)}`} />
-      <StatItem label="Virtual Liquidity" value={`$${formatNumber(liquidityUSD)}`} />
+      <StatItem label="Market Cap" value={marketCapUSD} />
+      <StatItem label="Virtual Liquidity" value={liquidityUSD} />
       <StatItem label="24H Volume" value={`${formatNumber(volume24hNative)} ${nativeSymbol}`} />
       <StatItem label="Created" value={dayjs(token.createdAt).fromNow()} />
     </div>
@@ -367,8 +367,8 @@ export function TokenDetails() {
 
   const statsPillsMobile = (
     <div className="flex flex-wrap gap-2">
-      <StatPill label="MC" value={`$${formatNumber(marketCapUSD)}`} />
-      <StatPill label="Liq" value={`$${formatNumber(liquidityUSD)}`} />
+      <StatPill label="MC" value={marketCapUSD} />
+      <StatPill label="Liq" value={liquidityUSD} />
       <StatPill label="Vol" value={`${formatNumber(volume24hNative)} ${nativeSymbol}`} />
     </div>
   );

@@ -185,3 +185,64 @@ export function priceImpactBps(
     executionX18 > spotPriceX18 ? executionX18 - spotPriceX18 : spotPriceX18 - executionX18;
   return Number((diff * 10_000n) / spotPriceX18);
 }
+
+// --- LCAI/USD ------------------------------------------------------------
+// Every "$" figure in the app is a native amount times this price. It is read
+// from a mainnet Uniswap V3 pool by useNativePrice; the maths lives here so it
+// can be tested without a network.
+
+/**
+ * LCAI/USD derived from a Uniswap V3 LCAI/WETH pool's `slot0.sqrtPriceX96`
+ * and an ETH/USD quote.
+ *
+ * `sqrtPriceX96` is `sqrt(token1 / token0) * 2**96` in raw units; both legs of
+ * this pool are 18-decimal, so no decimal adjustment applies. `token0`/`token1`
+ * are read from the pool rather than assumed — getting the orientation
+ * backwards silently misprices the whole site by a factor of ~10^9, which is
+ * exactly the class of made-up number this replaces.
+ *
+ * Returns `undefined` when the inputs cannot produce a real price: the pool is
+ * not the configured LCAI/WETH pair, the feed answered zero or negative, or
+ * the arithmetic went non-finite.
+ */
+export function lcaiUsdPrice(args: {
+  sqrtPriceX96: bigint;
+  token0: string;
+  token1: string;
+  lcai: string;
+  weth: string;
+  ethUsd: number;
+}): number | undefined {
+  const token0 = args.token0.toLowerCase();
+  const token1 = args.token1.toLowerCase();
+  const lcai = args.lcai.toLowerCase();
+  const weth = args.weth.toLowerCase();
+
+  const lcaiIsToken0 = token0 === lcai && token1 === weth;
+  const lcaiIsToken1 = token1 === lcai && token0 === weth;
+  if (!lcaiIsToken0 && !lcaiIsToken1) return undefined;
+  if (args.sqrtPriceX96 <= 0n) return undefined;
+  if (!Number.isFinite(args.ethUsd) || args.ethUsd <= 0) return undefined;
+
+  const token1PerToken0 = (Number(args.sqrtPriceX96) / 2 ** 96) ** 2;
+  const ethPerLcai = lcaiIsToken0 ? token1PerToken0 : 1 / token1PerToken0;
+  if (!Number.isFinite(ethPerLcai) || ethPerLcai <= 0) return undefined;
+
+  return args.ethUsd * ethPerLcai;
+}
+
+/**
+ * USD text for a native (LCAI) amount, or an em dash while the price is
+ * unknown. `priceUsd` is `undefined` until the mainnet read lands, and stays
+ * `undefined` if it fails — there is deliberately no fallback constant,
+ * because a plausible-looking invented dollar figure is worse than none.
+ */
+export function formatUsd(
+  nativeAmount: number,
+  priceUsd: number | undefined,
+  options?: Intl.NumberFormatOptions
+): string {
+  if (priceUsd === undefined || !Number.isFinite(priceUsd)) return "—";
+  if (!Number.isFinite(nativeAmount)) return "—";
+  return `$${formatNumber(nativeAmount * priceUsd, options)}`;
+}
