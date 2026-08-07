@@ -11,18 +11,26 @@
 module.exports = {
   apps: [
     {
-      name: "lcai-indexer",
+      name: "lcai-launchpad-indexer",
       cwd: "./apps/indexer",
       script: "node_modules/ponder/dist/esm/bin/ponder.js",
-      // --disable-ui: the terminal UI redraws on a timer and would flood pm2's
-      // log file. --hostname: keep Ponder's own server off the public interface.
-      args: "start --hostname 127.0.0.1 --disable-ui --log-format json",
+      // `ponder start` accepts only --schema/--port/--hostname; --disable-ui and
+      // --log-format are `ponder dev` flags and make start exit immediately.
+      //
+      // --schema is passed explicitly, NOT left to DATABASE_SCHEMA in
+      // apps/indexer/.env: Ponder resolves the schema before dotenv loads that
+      // file, so it only works as a real process env var (which is how the
+      // Dockerfile does it). Without the flag, start dies with
+      // "Database schema required" and pm2 restart-loops.
+      //
+      // --hostname keeps Ponder's own server off the public interface.
+      args: "start --schema public --hostname 127.0.0.1",
       env: { NODE_ENV: "production" },
       max_restarts: 10,
       restart_delay: 5000,
     },
     {
-      name: "lcai-api",
+      name: "lcai-launchpad-api",
       cwd: "./apps/api",
       script: "dist/main.js",
       env: { NODE_ENV: "production" },
