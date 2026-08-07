@@ -1,4 +1,4 @@
-import { decodeEventLog, parseEther } from "viem";
+import { decodeEventLog, formatEther, parseEther } from "viem";
 import { erc20Abi } from "viem";
 
 import { Token } from "@/types";
@@ -59,6 +59,28 @@ export default function useTradeFunctions() {
   };
 
   /**
+   * Throws a user-facing message when the wallet can't cover the creation fee
+   * (+ dev buy). Returns the msg.value the create tx needs. Called by
+   * `createToken`, and again by the form up front so a broke wallet doesn't pin
+   * to IPFS first.
+   */
+  const assertCanAffordCreation = async (devBuyEth?: string): Promise<bigint> => {
+    const wallet = requireWallet();
+    const creationFee = await launchpadContract.read.creationFee();
+    const value = creationFee + (devBuyEth ? parseEther(devBuyEth) : 0n);
+
+    // ponytail: fee-only check, no gas headroom — simulate still catches the rest
+    const balance = await publicClient.getBalance({ address: wallet.account.address });
+    if (balance < value) {
+      const sym = publicClient.chain?.nativeCurrency.symbol ?? "";
+      throw new Error(
+        `Insufficient balance — creating a token costs ${formatEther(value)} ${sym}, you have ${formatEther(balance)} ${sym}`,
+      );
+    }
+    return value;
+  };
+
+  /**
    * Create a new token. `metadataURI` is the `ipfs://CID` returned by
    * `POST /v1/metadata`. The launchpad charges a `creationFee` in native; an
    * optional `devBuyEth` is passed in the same tx (extra msg.value beyond the
@@ -73,18 +95,15 @@ export default function useTradeFunctions() {
     | { hash: `0x${string}`; tokenAddress: `0x${string}`; creatorAddress: `0x${string}` }
     | undefined
   > => {
-    if (!walletClient) return;
-
-    const creationFee = await launchpadContract.read.creationFee();
-    const devBuyWei = payload.devBuyEth ? parseEther(payload.devBuyEth) : 0n;
-    const value = creationFee + devBuyWei;
+    const wallet = requireWallet();
+    const value = await assertCanAffordCreation(payload.devBuyEth);
 
     const { request } = await launchpadContract.simulate.createToken(
       [payload.name, payload.symbol, payload.metadataURI],
-      { value, account: walletClient.account.address },
+      { value, account: wallet.account.address },
     );
 
-    const hash = await walletClient.writeContract(request);
+    const hash = await wallet.writeContract(request);
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
     for (const log of receipt.logs) {
@@ -204,6 +223,7 @@ export default function useTradeFunctions() {
 
   return {
     createToken,
+    assertCanAffordCreation,
     buyToken,
     buyTokenForTokens,
     sellToken,

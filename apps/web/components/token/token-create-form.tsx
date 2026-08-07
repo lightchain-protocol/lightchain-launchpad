@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as zod from "zod";
@@ -47,7 +47,7 @@ export function TokenCreateForm() {
   const router = useRouter();
   const { isConnected, address } = useConnection();
   const { open } = useAppKit();
-  const { createToken } = useTradeFunctions();
+  const { createToken, assertCanAffordCreation } = useTradeFunctions();
 
   const {
     register,
@@ -69,6 +69,7 @@ export function TokenCreateForm() {
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | undefined>();
+  const pinnedRef = useRef<{ key: string; uri: string } | null>(null);
 
   const pinMetadata = useMutation({
     mutationFn: async ({ values, file }: { values: FormValues; file: File }) => {
@@ -113,11 +114,30 @@ export function TokenCreateForm() {
       toast.error("Please pick an image");
       return;
     }
-    const pinned = await pinMetadata.mutateAsync({ values, file: imageFile });
+    try {
+      await assertCanAffordCreation();
+    } catch (err) {
+      toast.error((err as Error).message);
+      return;
+    }
+
+    // A rejected/failed tx leaves the pin valid — reuse it on resubmit unless
+    // the form or the image changed.
+    const key = JSON.stringify([
+      values,
+      imageFile.name,
+      imageFile.size,
+      imageFile.lastModified,
+    ]);
+    if (pinnedRef.current?.key !== key) {
+      const { uri } = await pinMetadata.mutateAsync({ values, file: imageFile });
+      pinnedRef.current = { key, uri };
+    }
+
     await mintToken.mutateAsync({
       name: values.name,
       symbol: values.symbol,
-      metadataURI: pinned.uri,
+      metadataURI: pinnedRef.current.uri,
     });
   };
 
