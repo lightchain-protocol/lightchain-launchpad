@@ -1,6 +1,8 @@
 import hre from "hardhat";
 import { encodeFunctionData, getAddress, parseEther, type Address } from "viem";
 
+import { chainOpts } from "./chain";
+
 const WAD = 10n ** 18n;
 
 export const DEFAULTS = {
@@ -47,15 +49,19 @@ export interface DeployOpts {
  * mainnet default (the 1/6 protocol fee is off).
  */
 export async function deployDex() {
-  const [deployer] = await hre.viem.getWalletClients();
-  const weth = await hre.viem.deployContract("WETH9", []);
+  const opts = chainOpts();
+  const publicClient = await hre.viem.getPublicClient(opts);
+  const [deployer] = await hre.viem.getWalletClients(opts);
+  const client = { public: publicClient, wallet: deployer };
+
+  const weth = await hre.viem.deployContract("WETH9", [], { client });
   const factory = await hre.viem.deployContract("UniswapV2Factory", [
     getAddress(deployer.account.address),
-  ]);
+  ], { client });
   const router = await hre.viem.deployContract("UniswapV2Router02", [
     getAddress(factory.address),
     getAddress(weth.address),
-  ]);
+  ], { client });
   return { weth, factory, router };
 }
 
@@ -68,8 +74,9 @@ export async function deployDex() {
  * every interaction. The implementation itself is only useful for verification.
  */
 export async function deployLaunchpad(opts: DeployOpts = {}) {
-  const publicClient = await hre.viem.getPublicClient();
-  const [deployer] = await hre.viem.getWalletClients();
+  const chain = chainOpts();
+  const publicClient = await hre.viem.getPublicClient(chain);
+  const [deployer] = await hre.viem.getWalletClients(chain);
   const client = { public: publicClient, wallet: deployer };
 
   const owner = opts.owner ?? getAddress(deployer.account.address);

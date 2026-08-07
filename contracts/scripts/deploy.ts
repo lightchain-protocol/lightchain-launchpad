@@ -17,6 +17,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import hre from "hardhat";
 import { parseEther, type Address } from "viem";
+import { chainOpts } from "./chain";
 import { deployLaunchpad } from "./deployLaunchpad";
 
 const WAD = 10n ** 18n;
@@ -25,7 +26,7 @@ async function main() {
   const dexRouter = (process.env.DEX_ROUTER || undefined) as Address | undefined;
   const treasury = (process.env.TREASURY || undefined) as Address | undefined;
 
-  const publicClient = await hre.viem.getPublicClient();
+  const publicClient = await hre.viem.getPublicClient(chainOpts());
   const startBlockBefore = await publicClient.getBlockNumber();
 
   const { launchpad, launchpadImpl, proxy, dexRouter: usedRouter, dex } =

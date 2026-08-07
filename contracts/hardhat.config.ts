@@ -41,6 +41,9 @@ const config: HardhatUserConfig = {
     },
     lcaiTestnet: {
       url: "https://rpc.testnet.lightchain.ai",
+      // Hardhat asserts this against the node's eth_chainId, and `scripts/chain.ts`
+      // reads it to hand hardhat-viem a chain it can't find in `viem/chains`.
+      chainId: 8200,
       accounts: WALLET_PRIVATE_KEY ? [WALLET_PRIVATE_KEY] : undefined,
     },
   },

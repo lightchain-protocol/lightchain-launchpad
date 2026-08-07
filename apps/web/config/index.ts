@@ -23,7 +23,7 @@ const config = {
 
   launchpad: {
     [localhost.id]: localLaunchpad,
-    [lcaiTestnet.id]: "0xe47f247a2249961b27eb1d6324d90972b320c29b",
+    [lcaiTestnet.id]: "0xbd0cb79733c8cc055fc0720d30c16b6dfbd69158",
     [lcai.id]: ZERO,
   } as Record<number, `0x${string}`>,
 

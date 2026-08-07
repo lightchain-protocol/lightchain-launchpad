@@ -1,0 +1,8 @@
+# Terminates TLS for the devnet API (Let's Encrypt, automatic).
+# Native Caddy on the VM, proxying to the pm2-managed API on loopback.
+# Domain comes from the API_DOMAIN env var — see /etc/default/caddy.
+# reverse_proxy passes socket.io's WebSocket upgrade through untouched.
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3001
+}
