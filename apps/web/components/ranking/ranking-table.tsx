@@ -21,19 +21,19 @@ function RankingRow({ item, rank, marketCapUSD }: { item: TokenListItem; rank: n
   return (
     <TableRow>
       <TableCell>
-        <div className="flex items-center gap-4">
-          <span className="theme-gradient text-xl font-bold">{rank}</span>
+        <div className="flex min-w-0 items-center gap-4">
+          <span className="theme-gradient shrink-0 text-xl font-bold">{rank}</span>
           <img
             src={imageUrl || "/images/card/card-img-sm-1.png"}
-            className="h-12 w-12 rounded-lg bg-primary/30 object-contain"
+            className="h-12 w-12 shrink-0 rounded-lg bg-primary/30 object-contain"
             alt={item.name}
           />
-          <Link href={`/token/${item.address}`} className="font-medium hover:underline">
+          <Link href={`/token/${item.address}`} className="min-w-0 truncate font-medium hover:underline">
             {item.name} (${item.symbol})
           </Link>
         </div>
       </TableCell>
-      <TableCell className="font-medium">{marketCapUSD}</TableCell>
+      <TableCell className="text-right font-medium">{marketCapUSD}</TableCell>
     </TableRow>
   );
 }
@@ -65,11 +65,11 @@ export function RankingTable() {
           ) : isError ? (
             <p className="py-16 text-center text-muted-foreground">Failed to load ranking.</p>
           ) : (
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Token</TableHead>
-                  <TableHead>Market Cap</TableHead>
+                  <TableHead className="w-[70%] sm:w-3/4">Token</TableHead>
+                  <TableHead className="w-[30%] text-right sm:w-1/4">Market Cap</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
