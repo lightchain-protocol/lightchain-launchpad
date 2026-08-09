@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
@@ -301,6 +302,28 @@ export function TokenDetails() {
           aria-label="Telegram"
         >
           <Send size={14} />
+        </Link>
+      )}
+      {token.metadata.twitter && (
+        <Link
+          href={token.metadata.twitter}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          aria-label="X (Twitter)"
+        >
+          <Image src="/images/coming-soon/x-icon.svg" width={14} height={14} alt="" />
+        </Link>
+      )}
+      {token.metadata.discord && (
+        <Link
+          href={token.metadata.discord}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          aria-label="Discord"
+        >
+          <Image src="/images/coming-soon/discord-icon.svg" width={14} height={14} alt="" />
         </Link>
       )}
     </>

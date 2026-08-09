@@ -13,7 +13,7 @@ export default function CreateTokenPage() {
           <h1 className="text-4xl font-bold capitalize">
             Launch your <span className="theme-gradient">token</span> on
             <br />
-            lighthcain
+            lightchain
           </h1>
         </div>
         <TokenCreateForm />

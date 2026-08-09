@@ -6,25 +6,26 @@ const linkGroups = [
   {
     title: "Useful links",
     links: [
-      { label: "Documentation", href: "https://docs.lightchain.ai" },
+      { label: "Documentation", href: "https://docs.lightchain.ai", external: true },
       { label: "Whitepaper", href: "https://lightchain.ai/lightchain-whitepaper.pdf", external: true },
-      { label: "Announcements", href: "https://news.lightchain.ai" },
+      { label: "Announcements", href: "https://news.lightchain.ai", external: true },
     ],
   },
   {
-    title: "Presale",
+    title: "Trade LCAI",
     links: [
-      { label: "How to Buy", href: "https://lightchain.ai/how-to-buy" },
-      { label: "Support", href: "https://t.me/LightchainAI" },
-      { label: "Win $100k", href: "https://lightchain.ai/join" },
+      {
+        label: "Buy on Uniswap",
+        href: "https://app.uniswap.org/explore/tokens/ethereum/0x9cA8530CA349c966Fe9ef903Df17a75B8A778927",
+        external: true,
+      },
     ],
   },
   {
     title: "Socials",
     links: [
-      { label: "Twitter (X)", href: "https://x.com/LightchainAI" },
-      { label: "Telegram", href: "https://t.me/LightchainProtocol" },
-      { label: "Linktree", href: "https://linktr.ee/lightchainai" },
+      { label: "Twitter (X)", href: "https://x.com/LightchainAI", external: true },
+      { label: "Discord", href: "https://discord.com/invite/lightchain", external: true },
     ],
   },
   {
