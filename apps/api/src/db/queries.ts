@@ -9,6 +9,8 @@
  */
 import { and, asc, desc, eq, gt, inArray, lt, lte, gte, sql } from "drizzle-orm";
 
+import { FETCH_TIMEOUT_MS } from "../services/ipfs.js";
+
 // Pull tables in directly so the inferred types resolve via the workspace
 // package path; ambient `tsc --declaration` doesn't need to invent a synthesised
 // re-export path under `../../../indexer/node_modules/ponder/...`.
@@ -467,7 +469,17 @@ export async function search(
 // its success and failure paths, so this is purely a claim marker — if the
 // process crashes mid-resolve the row simply becomes claimable again once the
 // window elapses, with no orphaned state to clean up.
-const CLAIM_GRACE_SEC = 30;
+//
+// Must comfortably exceed fetchTokenMetadata()'s worst case: it tries each
+// configured IPFS gateway in sequence, up to FETCH_TIMEOUT_MS each, so total
+// worst-case time scales with config.IPFS_GATEWAYS.length. This derives from
+// both rather than hardcoding a number, so the race this constant exists to
+// close doesn't silently reopen if someone adds gateways later. The +15s is
+// slack for everything around the fetch loop itself (DB round-trips, JSON
+// parsing, Zod validation, event-loop scheduling) — not just the network
+// calls the formula accounts for directly.
+const IPFS_WORST_CASE_SEC = Math.ceil((config.IPFS_GATEWAYS.length * FETCH_TIMEOUT_MS) / 1000);
+const CLAIM_GRACE_SEC = IPFS_WORST_CASE_SEC + 15;
 
 /**
  * Claim pending metadata rows for the resolver. Uses FOR UPDATE SKIP LOCKED

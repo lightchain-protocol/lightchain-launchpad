@@ -52,7 +52,7 @@ export function httpCandidates(uri: string): string[] {
 }
 
 const MAX_JSON_BYTES = 64 * 1024;
-const FETCH_TIMEOUT_MS = 5_000;
+export const FETCH_TIMEOUT_MS = 5_000;
 
 /** Read at most `max` bytes, aborting the stream rather than buffering past it. */
 async function readCapped(res: Response, max: number): Promise<string> {
