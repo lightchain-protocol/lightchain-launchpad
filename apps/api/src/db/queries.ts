@@ -462,35 +462,64 @@ export async function search(
 
 // --- metadata resolver ---------------------------------------------------
 
+// Grace window (seconds) a claimed row is hidden from other claimers while a
+// resolve is in flight. resolveOne() always overwrites `nextAttemptAt` on both
+// its success and failure paths, so this is purely a claim marker — if the
+// process crashes mid-resolve the row simply becomes claimable again once the
+// window elapses, with no orphaned state to clean up.
+const CLAIM_GRACE_SEC = 30;
+
 /**
- * Claim pending metadata rows for the resolver. Uses FOR UPDATE SKIP LOCKED so
- * concurrent resolvers (e.g. if you ever run two API replicas, or the
- * NOTIFY-driven `resolveNow` runs at the same instant as the sweep timer) won't
+ * Claim pending metadata rows for the resolver. Uses FOR UPDATE SKIP LOCKED
+ * *inside a transaction that also marks the claimed rows*, so concurrent
+ * resolvers (e.g. if you ever run two API replicas, or the NOTIFY-driven
+ * `resolveNow` firing while the sweep timer's claim is still in flight) won't
  * double-process the same token.
+ *
+ * Without the marker UPDATE in the same transaction, `FOR UPDATE SKIP LOCKED`
+ * only protects against two callers selecting at the *exact same instant* —
+ * as a bare statement it auto-commits (and releases its row lock) the moment
+ * the SELECT returns, so a claim moments later (e.g. while the first claim's
+ * IPFS fetch is still running) would re-select the same still-"pending" row.
  */
 export async function claimPendingMetadata(
   limit: number,
 ): Promise<{ token: string; metadataUri: string; attempts: number }[]> {
   const nowSec = BigInt(Math.floor(Date.now() / 1000));
+  const claimedUntil = nowSec + BigInt(CLAIM_GRACE_SEC);
+
   const rows = await safe(
-    db.execute(sql`
-      select ${tokenMetadata.token} as token,
-             ${tokenMetadata.metadataUri} as metadata_uri,
-             ${tokenMetadata.attempts} as attempts
-      from ${tokenMetadata}
-      where (
-        ${tokenMetadata.status} = 'pending'
-        or (${tokenMetadata.status} = 'failed' and ${tokenMetadata.attempts} < 8)
-      )
-      and (
-        ${tokenMetadata.nextAttemptAt} is null
-        or ${tokenMetadata.nextAttemptAt} <= ${nowSec}
-      )
-      order by ${tokenMetadata.updatedAt} asc
-      limit ${limit}
-      for update skip locked
-    `),
+    db.transaction(async (tx) => {
+      const claimable = await tx.execute(sql`
+        select ${tokenMetadata.token} as token,
+               ${tokenMetadata.metadataUri} as metadata_uri,
+               ${tokenMetadata.attempts} as attempts
+        from ${tokenMetadata}
+        where (
+          ${tokenMetadata.status} = 'pending'
+          or (${tokenMetadata.status} = 'failed' and ${tokenMetadata.attempts} < 8)
+        )
+        and (
+          ${tokenMetadata.nextAttemptAt} is null
+          or ${tokenMetadata.nextAttemptAt} <= ${nowSec}
+        )
+        order by ${tokenMetadata.updatedAt} asc
+        limit ${limit}
+        for update skip locked
+      `);
+      const claimedRows = claimable as unknown as { token: string; metadata_uri: string; attempts: number }[];
+      if (claimedRows.length === 0) return claimedRows;
+
+      const tokens = claimedRows.map((r) => r.token);
+      await tx.execute(sql`
+        update ${tokenMetadata}
+        set next_attempt_at = ${claimedUntil}
+        where ${tokenMetadata.token} in ${tokens}
+      `);
+      return claimedRows;
+    }),
   );
+
   return ((rows ?? []) as unknown as { token: string; metadata_uri: string; attempts: number }[]).map((r) => ({
     token: r.token,
     metadataUri: r.metadata_uri,
@@ -501,33 +530,49 @@ export async function claimPendingMetadata(
 /**
  * Claim a single pending row by token address (NOTIFY-driven path). Returns
  * null if the row isn't pending / not due yet / already claimed by another
- * worker — every caller must treat null as "nothing to do".
+ * worker — every caller must treat null as "nothing to do". See
+ * `claimPendingMetadata` above for why the claim + marker UPDATE must share
+ * one transaction.
  */
 export async function claimPendingMetadataByToken(
   token: string,
 ): Promise<{ token: string; metadataUri: string; attempts: number } | null> {
   const nowSec = BigInt(Math.floor(Date.now() / 1000));
+  const claimedUntil = nowSec + BigInt(CLAIM_GRACE_SEC);
   const addr = token.toLowerCase() as `0x${string}`;
-  const rows = await safe(
-    db.execute(sql`
-      select ${tokenMetadata.token} as token,
-             ${tokenMetadata.metadataUri} as metadata_uri,
-             ${tokenMetadata.attempts} as attempts
-      from ${tokenMetadata}
-      where ${tokenMetadata.token} = ${addr}
-        and (
-          ${tokenMetadata.status} = 'pending'
-          or (${tokenMetadata.status} = 'failed' and ${tokenMetadata.attempts} < 8)
-        )
-        and (
-          ${tokenMetadata.nextAttemptAt} is null
-          or ${tokenMetadata.nextAttemptAt} <= ${nowSec}
-        )
-      limit 1
-      for update skip locked
-    `),
+
+  const row = await safe(
+    db.transaction(async (tx) => {
+      const claimable = await tx.execute(sql`
+        select ${tokenMetadata.token} as token,
+               ${tokenMetadata.metadataUri} as metadata_uri,
+               ${tokenMetadata.attempts} as attempts
+        from ${tokenMetadata}
+        where ${tokenMetadata.token} = ${addr}
+          and (
+            ${tokenMetadata.status} = 'pending'
+            or (${tokenMetadata.status} = 'failed' and ${tokenMetadata.attempts} < 8)
+          )
+          and (
+            ${tokenMetadata.nextAttemptAt} is null
+            or ${tokenMetadata.nextAttemptAt} <= ${nowSec}
+          )
+        limit 1
+        for update skip locked
+      `);
+      const r = (claimable as unknown as { token: string; metadata_uri: string; attempts: number }[])[0];
+      if (!r) return null;
+
+      await tx.execute(sql`
+        update ${tokenMetadata}
+        set next_attempt_at = ${claimedUntil}
+        where ${tokenMetadata.token} = ${addr}
+      `);
+      return r;
+    }),
   );
-  const r = (rows ?? [])[0] as { token: string; metadata_uri: string; attempts: number } | undefined;
+
+  const r = row as { token: string; metadata_uri: string; attempts: number } | null | undefined;
   if (!r) return null;
   return { token: r.token, metadataUri: r.metadata_uri, attempts: num(r.attempts) };
 }
