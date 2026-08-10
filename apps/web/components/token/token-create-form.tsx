@@ -186,7 +186,7 @@ export function TokenCreateForm() {
             )}
           </div>
 
-          {(["website", "twitter", "telegram"] as const).map((field) => (
+          {(["website", "twitter", "telegram", "discord"] as const).map((field) => (
             <div key={field} className="space-y-2">
               <Label htmlFor={field} className="capitalize">
                 {field}

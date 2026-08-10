@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
@@ -36,6 +35,35 @@ import { Progress } from "@lcai/ui/components/progress";
 import { cn } from "@lcai/ui/lib/utils";
 
 type MobileTab = "info" | "chart" | "trade";
+
+/**
+ * Inlined rather than loaded via next/image so these two icons behave like
+ * the lucide ones next to them: `currentColor` picks up the surrounding
+ * text-muted-foreground/hover styling, and dropping the source SVGs'
+ * `preserveAspectRatio="none"` stops the (non-square) Discord mark from
+ * being squashed into a square box.
+ */
+function XIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 17.7189 18.24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M10.5451 7.71943L17.1414 0H15.5783L9.85075 6.70267L5.2762 0H0L6.91762 10.1356L0 18.2306H1.56319L7.61159 11.1524L12.4427 18.2306H17.7189L10.5447 7.71943H10.5451ZM8.40413 10.2249L7.70323 9.21565L2.12643 1.18469H4.52739L9.02793 7.66593L9.72883 8.67521L15.579 17.0998H13.178L8.40413 10.2253V10.2249Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function DiscordIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20.52 15.8845" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M17.3824 1.33032C16.0541 0.708845 14.6338 0.257181 13.149 0C12.9666 0.329697 12.7536 0.773147 12.6067 1.12591C11.0282 0.888531 9.46429 0.888531 7.91487 1.12591C7.76801 0.773147 7.55012 0.329697 7.36613 0C5.87967 0.257181 4.45776 0.710504 3.12946 1.33361C0.45028 5.38221 -0.276004 9.33025 0.0871387 13.2222C1.86412 14.5492 3.58622 15.3553 5.27926 15.8828C5.69728 15.3075 6.0701 14.696 6.39128 14.0514C5.77959 13.819 5.19372 13.5322 4.64015 13.1992C4.78701 13.0904 4.93066 12.9766 5.06945 12.8596C8.44586 14.4388 12.1144 14.4388 15.4505 12.8596C15.5909 12.9766 15.7345 13.0904 15.8798 13.1992C15.3246 13.5338 14.7371 13.8206 14.1254 14.0531C14.4466 14.696 14.8178 15.3092 15.2374 15.8845C16.9321 15.357 18.6558 14.5509 20.4328 13.2222C20.8589 8.71044 19.7049 4.79865 17.3824 1.33032ZM6.85127 10.8287C5.8377 10.8287 5.0065 9.88248 5.0065 8.73021C5.0065 7.57794 5.81995 6.63009 6.85127 6.63009C7.88261 6.63009 8.71378 7.57628 8.69603 8.73021C8.69764 9.88248 7.88261 10.8287 6.85127 10.8287ZM13.6687 10.8287C12.6551 10.8287 11.8239 9.88248 11.8239 8.73021C11.8239 7.57794 12.6373 6.63009 13.6687 6.63009C14.7 6.63009 15.5312 7.57628 15.5134 8.73021C15.5134 9.88248 14.7 10.8287 13.6687 10.8287Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
 
 function applyTradeToTokenDetail(old: TokenDetail, dto: Token, trade: Trade): TokenDetail {
   return {
@@ -312,7 +340,7 @@ export function TokenDetails() {
           className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
           aria-label="X (Twitter)"
         >
-          <Image src="/images/coming-soon/x-icon.svg" width={14} height={14} alt="" />
+          <XIcon size={14} />
         </Link>
       )}
       {token.metadata.discord && (
@@ -323,7 +351,7 @@ export function TokenDetails() {
           className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
           aria-label="Discord"
         >
-          <Image src="/images/coming-soon/discord-icon.svg" width={14} height={14} alt="" />
+          <DiscordIcon size={14} />
         </Link>
       )}
     </>
