@@ -6,8 +6,12 @@
  * was still in flight) would re-select the same "pending" row and resolve it
  * twice.
  *
- * Requires a real Postgres reachable at DATABASE_URL (see apps/api/.env or
- * apps/api/.env.example). Skips automatically if DATABASE_URL isn't set.
+ * Requires a real, *reachable* Postgres at DATABASE_URL (see apps/api/.env
+ * or apps/api/.env.example). Skips automatically if DATABASE_URL isn't set
+ * *or* if it's set but nothing is actually listening there (e.g. running
+ * tests without `make infra` up) — apps/api/.env always sets DATABASE_URL,
+ * so a presence check alone isn't enough to tell "not configured" apart
+ * from "configured but down"; only an actual probe can.
  *
  * NOTE: `../config.js` validates its env schema (and calls `process.exit(1)`
  * on failure) as an import-time side effect, and `./client.js` / `./queries.js`
@@ -33,18 +37,18 @@
  *     updated_at bigint not null
  *   );
  */
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 // Load .env directly (not via ../config.js) so we can read DATABASE_URL to
 // decide whether to skip *before* triggering config.ts's eager, crashing zod
 // validation. dotenv itself never throws on missing vars.
 import "dotenv/config";
 
-const hasDb = Boolean(process.env.DATABASE_URL);
-const describeIfDb = hasDb ? describe : describe.skip;
+const hasDbUrl = Boolean(process.env.DATABASE_URL);
+const describeIfDbUrl = hasDbUrl ? describe : describe.skip;
 
 const TOKEN = "0xabc0000000000000000000000000000000abc0";
 
-describeIfDb("metadata claim race", () => {
+describeIfDbUrl("metadata claim race", () => {
   // Deferred until we know DATABASE_URL is present, so a bare `vitest run`
   // with no test DB configured skips this file instead of crashing the
   // worker on config.ts's eager env validation.
@@ -52,6 +56,25 @@ describeIfDb("metadata claim race", () => {
   let closeDb: typeof import("./client.js").closeDb;
   let claimPendingMetadataByToken: typeof import("./queries.js").claimPendingMetadataByToken;
   let claimPendingMetadata: typeof import("./queries.js").claimPendingMetadata;
+
+  // DATABASE_URL being *set* doesn't mean Postgres is *reachable* --
+  // apps/api/.env always sets it, so without this probe, running the suite
+  // with the DB down (e.g. no `make infra`) fails every test on a raw
+  // ECONNREFUSED instead of skipping cleanly like the "unset" case does.
+  let dbReachable = false;
+
+  beforeAll(async () => {
+    ({ sql, closeDb } = await import("./client.js"));
+    ({ claimPendingMetadataByToken, claimPendingMetadata } = await import("./queries.js"));
+    try {
+      await sql`select 1`;
+      dbReachable = true;
+    } catch {
+      console.warn(
+        "[queries.race.test] DATABASE_URL is set but Postgres is unreachable -- skipping (start it with `make infra` to run this suite).",
+      );
+    }
+  });
 
   async function seedPending(token: string) {
     await sql`delete from token_metadata where token = ${token}`;
@@ -62,20 +85,20 @@ describeIfDb("metadata claim race", () => {
   }
 
   beforeEach(async () => {
-    if (!sql) {
-      ({ sql, closeDb } = await import("./client.js"));
-      ({ claimPendingMetadataByToken, claimPendingMetadata } = await import("./queries.js"));
-    }
+    if (!dbReachable) return;
     await seedPending(TOKEN);
   });
 
   afterAll(async () => {
-    if (!sql) return;
-    await sql`delete from token_metadata where token = ${TOKEN}`;
+    if (dbReachable) {
+      await sql`delete from token_metadata where token = ${TOKEN}`;
+    }
     await closeDb();
   });
 
-  it("does not let a second claim re-select a row still being resolved", async () => {
+  it("does not let a second claim re-select a row still being resolved", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+
     const claim1 = await claimPendingMetadataByToken(TOKEN);
     expect(claim1).not.toBeNull();
     expect(claim1?.token).toBe(TOKEN);
@@ -86,7 +109,9 @@ describeIfDb("metadata claim race", () => {
     expect(claim2).toBeNull();
   });
 
-  it("the batch sweep claim also respects an in-flight single-token claim", async () => {
+  it("the batch sweep claim also respects an in-flight single-token claim", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+
     const claim1 = await claimPendingMetadataByToken(TOKEN);
     expect(claim1).not.toBeNull();
 
