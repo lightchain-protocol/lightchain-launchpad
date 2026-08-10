@@ -33,7 +33,7 @@ function RankingRow({ item, rank, marketCapUSD }: { item: TokenListItem; rank: n
           </Link>
         </div>
       </TableCell>
-      <TableCell className="text-right font-medium">{marketCapUSD}</TableCell>
+      <TableCell className="truncate text-right font-medium">{marketCapUSD}</TableCell>
     </TableRow>
   );
 }
@@ -78,7 +78,7 @@ export function RankingTable() {
                     key={item.address}
                     item={item}
                     rank={index + 1}
-                    marketCapUSD={formatUsd(weiToNative(item.marketCap), nativePrice)}
+                    marketCapUSD={formatUsd(weiToNative(item.marketCap), nativePrice, { notation: "compact" })}
                   />
                 ))}
               </TableBody>
