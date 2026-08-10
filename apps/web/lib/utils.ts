@@ -15,8 +15,15 @@ export const formatNumber = (
   options?: Intl.NumberFormatOptions
 ) => {
   if (!num) return "0";
+  // Compact notation (e.g. "$12.3457K") inherits the general 4-digit default
+  // otherwise, which reads as needlessly precise for a rounded magnitude --
+  // 2 digits ("$12.35K") is the sensible default here. An explicit
+  // maximumFractionDigits in `options` still wins, since it's spread last.
+  const compactDefaults: Intl.NumberFormatOptions =
+    options?.notation === "compact" ? { maximumFractionDigits: 2 } : {};
   return Number(num).toLocaleString(undefined, {
     maximumFractionDigits: 4,
+    ...compactDefaults,
     ...options,
   });
 };

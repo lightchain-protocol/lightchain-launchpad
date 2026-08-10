@@ -261,6 +261,18 @@ describe("formatUsd", () => {
   it("passes formatting options through", () => {
     expect(formatUsd(1_000_000, 2, { notation: "compact" })).toBe("$2M");
   });
+
+  it("defaults compact notation to 2 fraction digits, not the general 4-digit default", () => {
+    // 500123.456 * 0.024691358 ≈ 12348.7273 -- would render as the
+    // needlessly precise "$12.3487K" under the general 4-digit default.
+    expect(formatUsd(500123.456, 0.024691358, { notation: "compact" })).toBe("$12.35K");
+  });
+
+  it("still respects an explicit maximumFractionDigits override in compact mode", () => {
+    expect(formatUsd(500123.456, 0.024691358, { notation: "compact", maximumFractionDigits: 4 })).toBe(
+      "$12.3487K",
+    );
+  });
 });
 
 describe("formatPrice", () => {
